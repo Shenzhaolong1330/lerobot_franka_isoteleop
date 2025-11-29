@@ -8,9 +8,8 @@ setup(
     author_email="suchenyu@mail.ustc.edu.cn",
     packages=find_packages(),
     install_requires=[
-        "pydhgripper",
         "pyrealsense2",
-        "ur-rtde",
+        "franky-control"
     ],
     python_requires=">=3.10",
     classifiers=[

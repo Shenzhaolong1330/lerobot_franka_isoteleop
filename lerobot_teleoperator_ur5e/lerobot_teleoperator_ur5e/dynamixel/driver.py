@@ -519,7 +519,7 @@ class DynamixelDriver(DynamixelDriverProtocol):
     def get_positions(self, hardware_offsets) -> np.ndarray:
         positions = self.get_joints()
         positions_deg = np.degrees(positions)
-        positions_deg[:6] += hardware_offsets
+        positions_deg[:7] += hardware_offsets
         return np.radians(positions_deg)
 
     def _check_port_availability(self) -> bool:

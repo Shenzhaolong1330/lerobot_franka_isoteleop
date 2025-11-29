@@ -114,8 +114,8 @@ def run_record(record_cfg: RecordConfig):
         dataset_name, data_version = generate_dataset_name(record_cfg)
 
         # Check joint offsets
-        if not record_cfg.debug:
-            check_joint_offsets(record_cfg)        
+        # if not record_cfg.debug:
+        #     check_joint_offsets(record_cfg)        
         
         # Create RealSenseCamera configurations
         wrist_image_cfg = RealSenseCameraConfig(serial_number_or_name=record_cfg.wrist_cam_serial,

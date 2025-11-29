@@ -112,7 +112,7 @@ if __name__ == "__main__":
             self.joint_signs = dxl_cfg["joint_signs"]
             self.gripper_config = dxl_cfg["gripper_config"]
             self.control_mode = teleop.get("control_mode", "isoteleop")
-
+    
     with open(Path(__file__).parent / "config" / "cfg.yaml", "r") as f:
         cfg = yaml.safe_load(f)
 

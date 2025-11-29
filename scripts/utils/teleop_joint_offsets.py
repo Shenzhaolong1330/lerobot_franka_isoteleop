@@ -4,7 +4,7 @@ import yaml
 import numpy as np
 import logging
 
-from rtde_receive import RTDEReceiveInterface
+from franky import Robot as FrankaRobot
 from lerobot_teleoperator_ur5e.dynamixel import DynamixelDriver
 
 # ------------------------ Logging Setup ------------------------ #
@@ -16,8 +16,8 @@ def get_start_joints(cfg) -> List[float]:
     """Connects to the UR5e robot and retrieves current joint positions."""
     try:
         logger.info("\n===== [ROBOT] Connecting to UR5e robot =====")
-        rtde_r = RTDEReceiveInterface(cfg.robot_ip)
-        joint_positions = rtde_r.getActualQ()
+        robot = FrankaRobot(cfg.robot_ip)
+        joint_positions = robot.current_joint_positions
         logger.info(f"[ROBOT] Current joint positions: {joint_positions}")
         logger.info("===== [ROBOT] UR5e connected successfully =====\n")
         return joint_positions
@@ -86,7 +86,8 @@ class RecordConfig:
 
 def run(record_cfg):
     start_joints = get_start_joints(record_cfg)
-    if start_joints:
+    print(start_joints)
+    if start_joints.any():
         return compute_joint_offsets(record_cfg, start_joints)
     else:
         raise RuntimeError("Failed to retrieve start joints from UR5e robot.")

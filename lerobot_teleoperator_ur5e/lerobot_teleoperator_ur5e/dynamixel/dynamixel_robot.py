@@ -25,14 +25,14 @@ class DynamixelRobot(Robot):
             FakeDynamixelDriver,
         )
 
-        if joint_offsets is None or len(joint_offsets) != 6:
-            raise ValueError(f"joint_offsets must be a sequence of length 6, got {joint_offsets}")
+        if joint_offsets is None or len(joint_offsets) != 7:
+            raise ValueError(f"joint_offsets must be a sequence of length 7, got {joint_offsets}")
 
-        if joint_signs is None or len(joint_signs) != 6:
-            raise ValueError(f"joint_signs must be a sequence of length 6, got {joint_signs}")
+        if joint_signs is None or len(joint_signs) != 7:
+            raise ValueError(f"joint_signs must be a sequence of length 7, got {joint_signs}")
 
-        if joint_ids is None or len(joint_ids) != 6:
-            raise ValueError(f"joint_ids must be a sequence of length 6, got {joint_ids}")
+        if joint_ids is None or len(joint_ids) != 7:
+            raise ValueError(f"joint_ids must be a sequence of length 7, got {joint_ids}")
 
 
         self.gripper_open_close: Optional[Tuple[float, float]]
@@ -103,7 +103,7 @@ class DynamixelRobot(Robot):
         """
         obs_dict = {}
         joint_state = self.get_joint_state()
-        for i in range(len(joint_state[:6])):
+        for i in range(len(joint_state[:7])):
             obs_dict[f"joint_{i+1}.pos"] = joint_state[i]
 
         if not self._use_gripper:
