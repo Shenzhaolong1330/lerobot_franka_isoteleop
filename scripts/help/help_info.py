@@ -1,13 +1,13 @@
 def main():
     print("""
 ==================================================
- UR5e Teleoperation Utilities - Command Reference
+ Franka Teleoperation Utilities - Command Reference
 ==================================================
 
 Core Commands:
-  ur5e-record           Record teleoperation dataset
-  ur5e-replay           Replay a recorded dataset
-  ur5e-visualize        Visualize recorded dataset
+  franka-record           Record teleoperation dataset
+  franka-replay           Replay a recorded dataset
+  franka-visualize        Visualize recorded dataset
 
 Utility Commands:
   utils-joint-offsets   Compute joint offsets for teleoperation
@@ -24,6 +24,6 @@ Test Commands:
   test-gripper-ctrl     Run gripper control command (operate the gripper)
 
 --------------------------------------------------
- Tip: Use 'ur5e-help' anytime to see this summary.
+ Tip: Use 'franka-help' anytime to see this summary.
 ==================================================
 """)

@@ -21,18 +21,18 @@ from typing import Any, Dict
 import yaml
 from lerobot.utils.errors import DeviceNotConnectedError
 from lerobot.teleoperators.teleoperator import Teleoperator
-from .config_teleop import UR5eTeleopConfig
+from .config_teleop import FrankaTeleopConfig
 logger = logging.getLogger(__file__)
 logger.setLevel(logging.INFO)
-class UR5eTeleop(Teleoperator):
+class FrankaTeleop(Teleoperator):
     """
     Isomorphic Teleop class for controlling a single robot arm.
     """
 
-    config_class = UR5eTeleopConfig
+    config_class = FrankaTeleopConfig
     name = "IsoTeleop"
 
-    def __init__(self, config: UR5eTeleopConfig):
+    def __init__(self, config: FrankaTeleopConfig):
         super().__init__(config)
         self.cfg = config
         self._is_connected = False
@@ -117,7 +117,7 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(f)
 
     record_cfg = RecordConfig(cfg["record"])
-    teleop_config = UR5eTeleopConfig(
+    teleop_config = FrankaTeleopConfig(
         port=record_cfg.port,
         use_gripper=record_cfg.use_gripper,
         hardware_offsets=record_cfg.hardware_offsets,
@@ -127,7 +127,7 @@ if __name__ == "__main__":
         gripper_config=record_cfg.gripper_config,
         control_mode=record_cfg.control_mode,       
     )
-    teleop = UR5eTeleop(teleop_config)
+    teleop = FrankaTeleop(teleop_config)
     teleop.connect()
     for i in range(2):
         teleop.get_action()

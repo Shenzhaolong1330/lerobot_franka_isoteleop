@@ -5,7 +5,7 @@ def get_vel(gripper):
                           modbus_low_addr=0x04,
                           is_set=False)
 def main():
-    gripper = PGE("/dev/ur5e_left_gripper")
+    gripper = PGE("/dev/franka_left_gripper")
     gripper.init_feedback()
     gripper.set_force(100)
     gripper.set_vel(100)

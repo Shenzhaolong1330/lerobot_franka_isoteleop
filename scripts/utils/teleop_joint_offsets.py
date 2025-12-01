@@ -5,7 +5,7 @@ import numpy as np
 import logging
 
 from franky import Robot as FrankaRobot
-from lerobot_teleoperator_ur5e.dynamixel import DynamixelDriver
+from lerobot_teleoperator_franka.dynamixel import DynamixelDriver
 
 # ------------------------ Logging Setup ------------------------ #
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -13,22 +13,22 @@ logger = logging.getLogger(__name__)
 
 # ------------------------ Robot Functions ------------------------ #
 def get_start_joints(cfg) -> List[float]:
-    """Connects to the UR5e robot and retrieves current joint positions."""
+    """Connects to the Franka robot and retrieves current joint positions."""
     try:
-        logger.info("\n===== [ROBOT] Connecting to UR5e robot =====")
+        logger.info("\n===== [ROBOT] Connecting to Franka robot =====")
         robot = FrankaRobot(cfg.robot_ip)
         joint_positions = robot.current_joint_positions
         logger.info(f"[ROBOT] Current joint positions: {joint_positions}")
-        logger.info("===== [ROBOT] UR5e connected successfully =====\n")
+        logger.info("===== [ROBOT] Franka connected successfully =====\n")
         return joint_positions
     except Exception as e:
-        logger.error("===== [ERROR] Failed to connect to UR5e robot =====")
+        logger.error("===== [ERROR] Failed to connect to Franka robot =====")
         logger.error(f"Exception: {e}\n")
         return []
 
 # ------------------------ Offset Calculation ------------------------ #
 def compute_joint_offsets(cfg, start_joints: List[float]):
-    """Compute offsets for Dynamixel joints to match the UR5e joint positions."""
+    """Compute offsets for Dynamixel joints to match the Franka joint positions."""
     
     driver = DynamixelDriver(cfg.joint_ids, port=cfg.port, baudrate=57600)
 
@@ -90,7 +90,7 @@ def run(record_cfg):
     if start_joints.any():
         return compute_joint_offsets(record_cfg, start_joints)
     else:
-        raise RuntimeError("Failed to retrieve start joints from UR5e robot.")
+        raise RuntimeError("Failed to retrieve start joints from Franka robot.")
 
 # ------------------------ Main ------------------------ #
 def main():

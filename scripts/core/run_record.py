@@ -2,8 +2,8 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any
 from scripts.utils.dataset_utils import generate_dataset_name, update_dataset_info
-from lerobot_robot_ur5e import UR5eConfig, UR5e
-from lerobot_teleoperator_ur5e import UR5eTeleopConfig, UR5eTeleop
+from lerobot_robot_franka import FrankaConfig, Franka
+from lerobot_teleoperator_franka import FrankaTeleopConfig, FrankaTeleop
 from lerobot.cameras.configs import ColorMode, Cv2Rotation
 from lerobot.cameras.realsense.camera_realsense import RealSenseCameraConfig
 from lerobot.scripts.lerobot_record import record_loop
@@ -86,7 +86,7 @@ def check_joint_offsets(record_cfg: RecordConfig):
 
     start_joints = get_start_joints(record_cfg)
     if start_joints is None:
-        raise RuntimeError("Failed to retrieve start joints from UR5e robot.")
+        raise RuntimeError("Failed to retrieve start joints from Franka robot.")
 
     joint_offsets = compute_joint_offsets(record_cfg, start_joints)
 
@@ -136,7 +136,7 @@ def run_record(record_cfg: RecordConfig):
 
         # Create the robot and teleoperator configurations
         camera_config = {"wrist_image": wrist_image_cfg, "exterior_image": exterior_image_cfg}
-        teleop_config = UR5eTeleopConfig(        
+        teleop_config = FrankaTeleopConfig(        
             port=record_cfg.port,
             use_gripper=record_cfg.use_gripper,
             hardware_offsets=record_cfg.hardware_offsets,
@@ -146,7 +146,7 @@ def run_record(record_cfg: RecordConfig):
             gripper_config=record_cfg.gripper_config,
             control_mode=record_cfg.control_mode)
         
-        robot_config = UR5eConfig(
+        robot_config = FrankaConfig(
             robot_ip=record_cfg.robot_ip,
             gripper_port=record_cfg.gripper_port,
             cameras = camera_config,
@@ -157,8 +157,8 @@ def run_record(record_cfg: RecordConfig):
             gripper_bin_threshold = record_cfg.gripper_bin_threshold
         )
         # Initialize the robot and teleoperator
-        robot = UR5e(robot_config)
-        teleop = UR5eTeleop(teleop_config)
+        robot = Franka(robot_config)
+        teleop = FrankaTeleop(teleop_config)
 
         # Configure the dataset features
         action_features = hw_to_dataset_features(robot.action_features, "action")

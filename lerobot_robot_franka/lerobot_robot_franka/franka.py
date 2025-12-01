@@ -6,32 +6,35 @@ from pathlib import Path
 from lerobot.cameras import make_cameras_from_configs
 from lerobot.utils.errors import DeviceNotConnectedError, DeviceAlreadyConnectedError
 from lerobot.robots.robot import Robot
-from .config_ur5e import UR5eConfig
+from .config_franka import FrankaConfig
 from typing import Any, Dict
 import yaml
 from franky import Robot as FrankaRobot
+from franky import Gripper as FrankaGripper
 from lerobot.cameras.configs import ColorMode, Cv2Rotation
 from lerobot.cameras.realsense.camera_realsense import RealSenseCameraConfig
 from franky import JointMotion, ReferenceType, RelativeDynamicsFactor
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-class UR5e(Robot):
-    config_class = UR5eConfig
-    name = "ur5e"
+class Franka(Robot):
+    config_class = FrankaConfig
+    name = "franka"
 
-    def __init__(self, config: UR5eConfig):
+    def __init__(self, config: FrankaConfig):
         super().__init__(config)
         self.cameras = make_cameras_from_configs(config.cameras)
 
         self.config = config
         self._is_connected = False
-        self._arm = {}
+        self._robot = None
         self._gripper = None
         self._initial_pose = None
         self._prev_observation = None
         self._num_joints = 7
         self._gripper_force = 20
+        self._gripper_speed = 0.2
+        self._gripper_epsilon = 1.0
         self._gripper_position = 1
         self._velocity = 0.5 # not used in current version
         self._acceleration = 0.5 # not used in current version
@@ -45,11 +48,11 @@ class UR5e(Robot):
             raise DeviceAlreadyConnectedError(f"{self.name} is already connected.")
 
         # Connect to robot
-        self._robot = self._check_ur5e_connection(self.config.robot_ip)
+        self._robot = self._check_franka_connection(self.config.robot_ip)
         
         # Initialize gripper
         if self.config.use_gripper:
-            self._gripper = self._check_gripper_connection(self.config.gripper_port)
+            self._gripper = self._check_gripper_connection(self.config.robot_ip)
 
             # Start gripper state reader
             self._start_gripper_state_reader()
@@ -65,18 +68,19 @@ class UR5e(Robot):
         logger.info(f"[INFO] {self.name} env initialization completed successfully.\n")
 
 
-    def _check_gripper_connection(self, port: str):
+    def _check_gripper_connection(self, robot_ip: str):
         logger.info("\n===== [GRIPPER] Initializing gripper...")
-        gripper = PGE(port)
-        gripper.init_feedback()
-        gripper.set_force(self._gripper_force)
+        gripper = FrankaGripper(robot_ip)
+        gripper.open(speed=0.2)
+        # gripper.init_feedback()
+        # gripper.set_force(self._gripper_force)
         logger.info("===== [GRIPPER] Gripper initialized successfully.\n")
         return gripper
 
 
-    def _check_ur5e_connection(self, robot_ip: str):
+    def _check_franka_connection(self, robot_ip: str):
         try:
-            logger.info("\n===== [ROBOT] Connecting to UR5e robot =====")
+            logger.info("\n===== [ROBOT] Connecting to Franka robot =====")
             robot = FrankaRobot(robot_ip)
             # robot.relative_dynamics_factor = 0.2
             robot.relative_dynamics_factor = RelativeDynamicsFactor(1, 0.15, 0.05)
@@ -87,12 +91,12 @@ class UR5e(Robot):
             if joint_positions is not None and len(joint_positions) == 7:
                 formatted_joints = [round(j, 4) for j in joint_positions]
                 logger.info(f"[ROBOT] Current joint positions: {formatted_joints}")
-                logger.info("===== [ROBOT] UR5e connected successfully =====\n")
+                logger.info("===== [ROBOT] Franka connected successfully =====\n")
             else:
                 logger.info("===== [ERROR] Failed to read joint positions. Check connection or remote control mode =====")
 
         except Exception as e:
-            logger.info("===== [ERROR] Failed to connect to UR5e robot =====")
+            logger.info("===== [ERROR] Failed to connect to Franka robot =====")
             logger.info(f"Exception: {e}\n")
 
         return robot
@@ -101,21 +105,22 @@ class UR5e(Robot):
         threading.Thread(target=self._read_gripper_state, daemon=True).start()
 
     def _read_gripper_state(self):
-        self._gripper.pos = None
+        self._gripper_pos = None
         while True:
             gripper_position = 0.0 if self._gripper_position  < self.config.close_threshold else 1.0
             if self.config.gripper_reverse:
                 gripper_position = 1 - gripper_position
 
             if gripper_position != self._last_gripper_position:
-                self._gripper.set_pos(val=int(1000 * gripper_position), blocking=False)
+                # self._gripper.set_pos(val=int(1000 * gripper_position), blocking=False)
+                self._gripper.grasp(gripper_position, speed=self._gripper_speed, force = self._gripper_force, epsilon_outer=self._gripper_epsilon)
                 self._last_gripper_position = gripper_position
 
-            gripper_pos = self._gripper.read_pos() / 1000.0
+            gripper_pos = self._gripper.width
             if self.config.gripper_reverse:
                 gripper_pos = 1 - gripper_pos
 
-            self._gripper.pos = gripper_pos
+            self._gripper_pos = gripper_pos
             time.sleep(0.01)
 
     @property
@@ -130,16 +135,17 @@ class UR5e(Robot):
             "joint_6.pos": float,
             "joint_7.pos": float,
             # gripper state
-            # "gripper_raw_position": float, # raw position in [0,1]
-            # "gripper_raw_bin": float, # raw position bin (0 or 1)
-            # "gripper_action_bin": float, # action command bin (0 or 1)
-            # # joint velocities
-            # "joint_1.vel": float,
-            # "joint_2.vel": float,
-            # "joint_3.vel": float,
-            # "joint_4.vel": float,
-            # "joint_5.vel": float,
-            # "joint_6.vel": float,
+            "gripper_raw_position": float, # raw position in [0,1]
+            "gripper_raw_bin": float, # raw position bin (0 or 1)
+            "gripper_action_bin": float, # action command bin (0 or 1)
+            # joint velocities
+            "joint_1.vel": float,
+            "joint_2.vel": float,
+            "joint_3.vel": float,
+            "joint_4.vel": float,
+            "joint_5.vel": float,
+            "joint_6.vel": float,
+            "joint_7.vel": float,
             # # joint accelerations
             # "joint_1.acc": float,
             # "joint_2.acc": float,
@@ -147,6 +153,7 @@ class UR5e(Robot):
             # "joint_4.acc": float,
             # "joint_5.acc": float,
             # "joint_6.acc": float,
+            # "joint_7.acc": float,
             # # joint forces
             # "joint_1.force": float,
             # "joint_2.force": float,
@@ -154,31 +161,32 @@ class UR5e(Robot):
             # "joint_4.force": float,
             # "joint_5.force": float,
             # "joint_6.force": float,
-            # # tcp pose
-            # "tcp_pose.x": float,
-            # "tcp_pose.y": float,
-            # "tcp_pose.z": float,
-            # "tcp_pose.rx": float,
-            # "tcp_pose.ry": float,
-            # "tcp_pose.rz": float,
-            # # tcp speed
-            # "tcp_speed.x": float,
-            # "tcp_speed.y": float,
-            # "tcp_speed.z": float,
-            # "tcp_speed.rx": float,
-            # "tcp_speed.ry": float,
-            # "tcp_speed.rz": float,
-            # # tcp acceleration
-            # "tcp_acc.x": float,
-            # "tcp_acc.y": float,
-            # "tcp_acc.z": float,
-            # # tcp force
-            # "tcp_force.x": float,
-            # "tcp_force.y": float,
-            # "tcp_force.z": float,
-            # "tcp_force.rx": float,
-            # "tcp_force.ry": float,
-            # "tcp_force.rz": float,
+            # "joint_7.force": float,
+            # end effector pose
+            "ee_pose.x": float,
+            "ee_pose.y": float,
+            "ee_pose.z": float,
+            "ee_pose.rx": float,
+            "ee_pose.ry": float,
+            "ee_pose.rz": float,
+            # end effector velocity
+            "ee_vel.x": float,
+            "ee_vel.y": float,
+            "ee_vel.z": float,
+            "ee_vel.rx": float,
+            "ee_vel.ry": float,
+            "ee_vel.rz": float,
+            # # end effector acceleration
+            # "ee_acc.x": float,
+            # "ee_acc.y": float,
+            # "ee_acc.z": float,
+            # # end effector force and torque
+            # "ee_force.x": float,
+            # "ee_force.y": float,
+            # "ee_force.z": float,
+            # "ee_force.rx": float,
+            # "ee_force.ry": float,
+            # "ee_force.rz": float,
         }
 
     @property
@@ -191,7 +199,7 @@ class UR5e(Robot):
             "joint_5.pos": float,
             "joint_6.pos": float,
             "joint_7.pos": float,
-            # "gripper_position": float,
+            "gripper_position": float,
         }
 
     def send_action(self, action: dict[str, Any]) -> dict[str, Any]:
@@ -204,12 +212,8 @@ class UR5e(Robot):
         if not self.config.debug:
             self._robot.move(JointMotion(joint_positions, ReferenceType.Absolute, return_when_finished=True), asynchronous=True)
 
-            # t_start = self._arm["rtde_c"].initPeriod()
-            # self._arm["rtde_c"].servoJ(joint_positions, self._velocity, self._acceleration, self._dt, self._lookahead_time, self._gain)
-            # self._arm["rtde_c"].waitPeriod(t_start)
-
-        # if "gripper_position" in action:
-        #     self._gripper_position = action["gripper_position"]
+        if "gripper_position" in action:
+            self._gripper_position = action["gripper_position"]
         return action
 
     def get_observation(self) -> dict[str, Any]:
@@ -217,12 +221,10 @@ class UR5e(Robot):
             raise DeviceNotConnectedError(f"{self} is not connected.")
         
         # Read joint positions
-        joint_position = self._robot.current_joint_positions
-        # # Read joint positions
-        # joint_position = self._arm["rtde_r"].getActualQ()
+        joint_position = self._robot.current_joint_state.position
         
-        # # Read joint velocities
-        # joint_velocity = self._arm["rtde_r"].getActualQd()
+        # Read joint velocities
+        joint_velocity = self._robot.current_joint_state.velocity
 
         # # Read joint accelerations
         # joint_acceleration = self._arm["rtde_r"].getTargetQdd()
@@ -230,11 +232,14 @@ class UR5e(Robot):
         # # Read joint forces
         # joint_force = self._arm["rtde_c"].getJointTorques()
 
-        # # Read tcp pose
-        # tcp_pose = self._arm["rtde_r"].getActualTCPPose()
+        # Read ee pose
+        cartesian_state = self._robot.current_cartesian_state
+        robot_pose = cartesian_state.pose  # Contains end-effector pose and elbow position
+        ee_pose = robot_pose.end_effector_pose
 
-        # # Read tcp speed
-        # tcp_speed = self._arm["rtde_r"].getActualTCPSpeed()
+        # Read ee speed
+        robot_velocity = cartesian_state.velocity  # Contains end-effector twist and elbow velocity
+        ee_speed = robot_velocity.end_effector_twist
 
         # # Read tcp acceleration
         # tcp_acceleration = self._arm["rtde_r"].getActualToolAccelerometer()
@@ -247,25 +252,25 @@ class UR5e(Robot):
         print("joint_position:", joint_position)
         for i in range(len(joint_position)):
             obs_dict[f"joint_{i+1}.pos"] = joint_position[i]
-        #     obs_dict[f"joint_{i+1}.vel"] = joint_velocity[i]
+            obs_dict[f"joint_{i+1}.vel"] = joint_velocity[i]
         #     obs_dict[f"joint_{i+1}.acc"] = joint_acceleration[i]
         #     obs_dict[f"joint_{i+1}.force"] = joint_force[i]
 
-        # for i, axis in enumerate(["x", "y", "z","rx","ry","rz"]):
-        #     obs_dict[f"tcp_pose.{axis}"] = tcp_pose[i]
-        #     obs_dict[f"tcp_speed.{axis}"] = tcp_speed[i]
+        for i, axis in enumerate(["x", "y", "z","rx","ry","rz"]):
+            obs_dict[f"ee_pose.{axis}"] = ee_pose[i]
+            obs_dict[f"ee_speed.{axis}"] = ee_speed[i]
         #     if i < 3: # tcp_acceleration have only 3 axes
         #         obs_dict[f"tcp_acc.{axis}"] = tcp_acceleration[i]
         #     obs_dict[f"tcp_force.{axis}"] = tcp_force[i]
 
-        # if self.config.use_gripper:
-        #     obs_dict["gripper_raw_position"] = self._gripper.pos
-        #     obs_dict["gripper_action_bin"] = self._last_gripper_position
-        #     obs_dict["gripper_raw_bin"] = 0 if self._gripper.pos <= self.config.gripper_bin_threshold else 1
-        # else:
-        #     obs_dict["gripper_raw_position"] = None
-        #     obs_dict["gripper_action_bin"] = None
-        #     obs_dict["gripper_raw_bin"] = None
+        if self.config.use_gripper:
+            obs_dict["gripper_raw_position"] = self._gripper_pos
+            obs_dict["gripper_action_bin"] = self._last_gripper_position
+            obs_dict["gripper_raw_bin"] = 0 if self._gripper_pos <= self.config.gripper_bin_threshold else 1
+        else:
+            obs_dict["gripper_raw_position"] = None
+            obs_dict["gripper_action_bin"] = None
+            obs_dict["gripper_raw_bin"] = None
 
         # Capture images from cameras
         for cam_key, cam in self.cameras.items():
@@ -282,9 +287,9 @@ class UR5e(Robot):
         if not self.is_connected:
             return
 
-        if self._arm is not None:
-            self._arm["rtde_c"].disconnect()
-            self._arm["rtde_r"].disconnect()
+        # if self._arm is not None:
+        #     self._arm["rtde_c"].disconnect()
+        #     self._arm["rtde_r"].disconnect()
 
         for cam in self.cameras.values():
             cam.disconnect()
@@ -351,7 +356,6 @@ if __name__ == "__main__":
             self.use_gripper = robot["use_gripper"]
             self.close_threshold = robot["close_threshold"]
             self.gripper_bin_threshold = robot["gripper_bin_threshold"]
-            self.gripper_port = robot["gripper_port"]
             self.gripper_reverse = robot["gripper_reverse"]
 
 
@@ -388,9 +392,8 @@ if __name__ == "__main__":
     # Create the robot and teleoperator configurations
     camera_config = {"wrist_image": wrist_image_cfg, "exterior_image": exterior_image_cfg}
 
-    robot_config = UR5eConfig(
+    robot_config = FrankaConfig(
             robot_ip=record_cfg.robot_ip,
-            gripper_port=record_cfg.gripper_port,
             cameras = camera_config,
             debug = False,
             close_threshold = record_cfg.close_threshold,
@@ -398,5 +401,5 @@ if __name__ == "__main__":
             gripper_reverse = record_cfg.gripper_reverse,
             gripper_bin_threshold = record_cfg.gripper_bin_threshold
         )
-    ur5e = UR5e(robot_config)
-    ur5e.connect()
+    franka = Franka(robot_config)
+    franka.connect()

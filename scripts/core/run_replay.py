@@ -4,7 +4,7 @@ import logging
 logging.basicConfig(level=logging.WARNING, format="%(message)s")
 from pathlib import Path
 from typing import Dict, Any
-from lerobot_robot_ur5e import UR5eConfig, UR5e
+from lerobot_robot_franka import FrankaConfig, Franka
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.utils.robot_utils import busy_wait
 from lerobot.utils.utils import log_say
@@ -24,12 +24,12 @@ class ReplayConfig:
 def run_replay(replay_cfg: ReplayConfig):
     episode_idx = replay_cfg.episode_idx
 
-    robot_config = UR5eConfig(
+    robot_config = FrankaConfig(
         robot_ip=replay_cfg.robot_ip,
         gripper_port=replay_cfg.gripper_port,
     )
 
-    robot = robot = UR5e(robot_config)
+    robot = robot = Franka(robot_config)
     robot.connect()
     dataset = LeRobotDataset(replay_cfg.dataset_name, episodes=[episode_idx])
     actions = dataset.hf_dataset.select_columns("action")

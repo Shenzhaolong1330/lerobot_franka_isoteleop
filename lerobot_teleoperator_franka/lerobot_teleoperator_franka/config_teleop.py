@@ -3,9 +3,9 @@ from dataclasses import dataclass
 from lerobot.teleoperators.config import TeleoperatorConfig
 
 
-@TeleoperatorConfig.register_subclass("lerobot_teleoperator_ur5e")
+@TeleoperatorConfig.register_subclass("lerobot_teleoperator_franka")
 @dataclass
-class UR5eTeleopConfig(TeleoperatorConfig):
+class FrankaTeleopConfig(TeleoperatorConfig):
     port: str
     use_gripper: bool
     hardware_offsets: list[float]

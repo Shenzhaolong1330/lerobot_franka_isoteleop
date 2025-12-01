@@ -1,4 +1,4 @@
-# UR5e 同构遥操作数据采集与回放指南
+# Franka 同构遥操作数据采集与回放指南
 <p align="center">
   <img src="assets/robot.png" alt="Record" width="600">
   <br>
@@ -20,26 +20,26 @@ git clone https://github.com/huggingface/lerobot.git
 pip install -e lerobot
 ```
 
-### 1.3 克隆并安装 UR5e 遥操作控制源码
+### 1.3 克隆并安装 Franka 遥操作控制源码
 ```bash
 mkdir ur_data_collection && cd ur_data_collection
-git clone https://github.com/scy-v/lerobot_ur5e_isoteleop.git
-cd lerobot_ur5e_isoteleop
+git clone https://github.com/Shenzhaolong1330/lerobot_franka_isoteleop.git
+cd lerobot_franka_isoteleop
 pip install -e .
 ```
 
 ### 1.4 查看可运行的命令
 运行以下命令以查看所有可用的脚本：
 ```bash
-ur5e-help
+franka-help
 # ==================================================
-#  UR5e Teleoperation Utilities - Command Reference
+#  Franka Teleoperation Utilities - Command Reference
 # ==================================================
 
 # Core Commands:
-#   ur5e-record           Record teleoperation dataset
-#   ur5e-replay           Replay a recorded dataset
-#   ur5e-visualize        Visualize recorded dataset
+#   franka-record           Record teleoperation dataset
+#   franka-replay           Replay a recorded dataset
+#   franka-visualize        Visualize recorded dataset
 
 # Utility Commands:
 #   utils-joint-offsets   Compute joint offsets for teleoperation
@@ -56,7 +56,7 @@ ur5e-help
 #   test-gripper-ctrl     Run gripper control command (operate the gripper)
 
 # --------------------------------------------------
-#  Tip: Use 'ur5e-help' anytime to see this summary.
+#  Tip: Use 'franka-help' anytime to see this summary.
 # ==================================================
 ```
 ## 2. 获取和配置必要参数
@@ -68,9 +68,9 @@ tools-check-rs
 ```
 
 ### 2.2 固定夹爪串口映射
-例如，将夹爪映射到 `/dev/ur5e_left_gripper`, 执行此操作前，请确保仅连接一个夹爪的usb设备。
+例如，将夹爪映射到 `/dev/franka_left_gripper`, 执行此操作前，请确保仅连接一个夹爪的usb设备。
 ```bash
-map_gripper.sh ur5e_left_gripper
+map_gripper.sh franka_left_gripper
 ```
 随后，将设定的映射值填入`cfg.yaml`中的`gripper_port`字段
 ### 2.3 获取主臂的固定串口标识符
@@ -105,11 +105,11 @@ huggingface-cli whoami  # 检查是否登录成功
 ```
 
 ### 3.2 开始记录
-1. 打开 UR5e 示教器上的 **Remote Control**。
+1. 打开 Franka 示教器上的 **Remote Control**。
 2. 确认 `cfg.yaml` 中参数配置正确。
 3. 为了确保数据收集过程规范，请先阅读 `9. 数据集命名与记录详解` 以了解数据记录细节，然后再运行以下命令：
 ```bash
-ur5e-record
+franka-record
 ```
 <p align="center">
   <img src="assets/record.png" alt="Record" width="600">
@@ -119,12 +119,12 @@ ur5e-record
 
 ## 4. 数据集回放
 ```bash
-ur5e-replay #注意cfg配置
+franka-replay #注意cfg配置
 ```
 
 ## 5. 数据集可视化
 ```bash
-ur5e-visualize #注意cfg配置
+franka-visualize #注意cfg配置
 ```
 <p align="center">
   <img src="assets/visualize.png" alt="Visualization" width="600">
@@ -135,7 +135,7 @@ ur5e-visualize #注意cfg配置
 ## 6. 数据集追加与恢复
 如果你已经在指定的 `repo_id` 下录制过数据集，可以在 `cfg.yaml` 中将 `resume` 设置为 `True`，并在 `resume_dataset` 中填写要追加的数据集名称，以便在现有数据集的基础上继续录制。然后运行以下命令：
 ```bash
-ur5e-record
+franka-record
 ```
 
 ## 7. 数据集合并
@@ -197,7 +197,7 @@ lerobot-edit-dataset
 1. 完成步骤 `2. 获取和配置必要参数`。
 2. 根据任务内容，在 `cfg.yaml` 的 `task.description` 中填写指令，并根据数据集命名规则设置 `repo_id`。
 3. 检查并调整 `cfg.yaml` 中的其他参数，确保配置正确。
-4. 运行命令 `ur5e-record`，为确保安全， 请保证主臂与从臂关节角近似，`ur5e-record` 会自动执行 `2.4 获取主臂-从臂关节角误差周期` 检查，然后按照 `8. 录制控制按键说明` 完成录制操作。
+4. 运行命令 `franka-record`，为确保安全， 请保证主臂与从臂关节角近似，`franka-record` 会自动执行 `2.4 获取主臂-从臂关节角误差周期` 检查，然后按照 `8. 录制控制按键说明` 完成录制操作。
 5. 数据记录结束后，数据集同级目录会生成 `dataset_info.txt` 文件，用于保存本地数据集信息。如果手动删除过数据集，可通过以下命令更新记录信息：
 ```bash
 tools-check-dataset

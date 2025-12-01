@@ -1,4 +1,4 @@
-# UR5e Master-Slave Teleoperation Data Collection
+# Franka Master-Slave Teleoperation Data Collection
 <p align="center">
   <img src="assets/robot.png" alt="Record" width="600">
   <br>
@@ -19,26 +19,26 @@ git clone https://github.com/huggingface/lerobot.git
 pip install -e lerobot
 ```
 
-### 1.3 Clone and Install UR5e Teleoperation Control Source
+### 1.3 Clone and Install Franka Teleoperation Control Source
 ```bash
 mkdir ur_data_collection && cd ur_data_collection
-git clone https://github.com/scy-v/lerobot_ur5e_isoteleop.git
-cd lerobot_ur5e_isoteleop
+git clone https://github.com/scy-v/lerobot_franka_isoteleop.git
+cd lerobot_franka_isoteleop
 pip install -e .
 ```
 
 ### 1.4 View Available Commands
 Run the following command to display all available scrtips:
 ```bash
-ur5e-help
+franka-help
 # ==================================================
-#  UR5e Teleoperation Utilities - Command Reference
+#  Franka Teleoperation Utilities - Command Reference
 # ==================================================
 
 # Core Commands:
-#   ur5e-record           Record teleoperation dataset
-#   ur5e-replay           Replay a recorded dataset
-#   ur5e-visualize        Visualize recorded dataset
+#   franka-record           Record teleoperation dataset
+#   franka-replay           Replay a recorded dataset
+#   franka-visualize        Visualize recorded dataset
 
 # Utility Commands:
 #   utils-joint-offsets   Compute joint offsets for teleoperation
@@ -55,7 +55,7 @@ ur5e-help
 #   test-gripper-ctrl     Run gripper control command (operate the gripper)
 
 # --------------------------------------------------
-#  Tip: Use 'ur5e-help' anytime to see this summary.
+#  Tip: Use 'franka-help' anytime to see this summary.
 # ==================================================
 ```
 
@@ -68,9 +68,9 @@ tools-check-rs
 ```
 
 ### 2.2 Map Gripper Serial Port
-For example, map the gripper to `/dev/ur5e_left_gripper` and make sure only one gripper USB device is connected:
+For example, map the gripper to `/dev/franka_left_gripper` and make sure only one gripper USB device is connected:
 ```bash
-map_gripper.sh ur5e_left_gripper
+map_gripper.sh franka_left_gripper
 ```
 Next, enter the mapped device into the `gripper_port` field in `cfg.yaml`.
 
@@ -108,11 +108,11 @@ huggingface-cli whoami  # Verify successful login
 ```
 
 ### 3.2 Start Recording
-1. Turn on **Remote Control** on the UR5e teach pendant.  
+1. Turn on **Remote Control** on the Franka teach pendant.  
 2. Verify that the parameters in `cfg.yaml` are correct.  
 3. To ensure standardized data collection, please read `9. Dataset Naming and Recording Details` before running the following command:
 ```bash
-ur5e-record
+franka-record
 ```
 
 <p align="center">
@@ -123,12 +123,12 @@ ur5e-record
 
 ## 4. Dataset Replay
 ```bash
-ur5e-replay # Make sure cfg.yaml is properly configured
+franka-replay # Make sure cfg.yaml is properly configured
 ```
 
 ## 5. Dataset Visualization
 ```bash
-ur5e-visualize # Make sure cfg.yaml is properly configured
+franka-visualize # Make sure cfg.yaml is properly configured
 ```
 <p align="center">
   <img src="assets/visualize.png" alt="Visualization" width="600">
@@ -140,7 +140,7 @@ ur5e-visualize # Make sure cfg.yaml is properly configured
 If you have already recorded a dataset under the specified `repo_id`, set `resume: True` in `cfg.yaml` and enter the dataset name in `resume_dataset` to continue recording new data on the existing dataset. Then, run the following command:
 
 ```bash
-ur5e-record
+franka-record
 ```
 
 ## 7. Merge Datasets
@@ -203,7 +203,7 @@ lerobot-edit-dataset
 1. Complete step `2. Get and configure required parameters`.
 2. Fill in the task instruction in `cfg.yaml` under `task.description` and set `repo_id` according to the dataset naming rules.
 3. Check and adjust other parameters in `cfg.yaml` to ensure correctness.
-4. Run `ur5e-record`. For safety, ensure the master and slave arm joint angles are approximately aligned; `ur5e-record` will automatically perform the `2.4 Master-Slave Joint Angle Error Check`. Then follow `8. Recording Control Keys` to complete the recording.
+4. Run `franka-record`. For safety, ensure the master and slave arm joint angles are approximately aligned; `franka-record` will automatically perform the `2.4 Master-Slave Joint Angle Error Check`. Then follow `8. Recording Control Keys` to complete the recording.
 5. After recording, a `dataset_info.txt` file will be automatically created in the same directory to store local dataset information. If you have manually deleted any datasets, update the `dataset_info.txt` using:
 ```bash
 tools-check-dataset

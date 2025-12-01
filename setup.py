@@ -5,15 +5,15 @@ from pathlib import Path
 ROOT = Path(__file__).parent.resolve()
 
 setup(
-    name="lerobot_ur5e_isoteleop",
+    name="lerobot_franka_isoteleop",
     version="0.1.0",
-    description="UR5e teleoperation and dataset collection utilities",
+    description="Franka teleoperation and dataset collection utilities",
     python_requires=">=3.10",
     packages=find_packages(where=".", include=["scripts*", "scripts.*"]),
     include_package_data=True,
     install_requires=[
-        f"lerobot_robot_ur5e @ file:///{ROOT}/lerobot_robot_ur5e",
-        f"lerobot_teleoperator_ur5e @ file:///{ROOT}/lerobot_teleoperator_ur5e"
+        f"lerobot_robot_franka @ file:///{ROOT}/lerobot_robot_franka",
+        f"lerobot_teleoperator_franka @ file:///{ROOT}/lerobot_teleoperator_franka"
     ],
     scripts=[
         "scripts/tools/map_gripper.sh",
@@ -22,9 +22,9 @@ setup(
     entry_points={
         "console_scripts": [
             # core commands
-            "ur5e-record = scripts.core.run_record:main",
-            "ur5e-replay = scripts.core.run_replay:main",
-            "ur5e-visualize = scripts.core.run_visualize:main",
+            "franka-record = scripts.core.run_record:main",
+            "franka-replay = scripts.core.run_replay:main",
+            "franka-visualize = scripts.core.run_visualize:main",
             # utils commands (data utilities)
             "utils-joint-offsets = scripts.utils.teleop_joint_offsets:main",
 
@@ -35,7 +35,7 @@ setup(
             # test commands (testing scripts)
             "test-gripper-ctrl = scripts.test.gripper_ctrl:main",
             # unified help command
-            "ur5e-help = scripts.help.help_info:main",
+            "franka-help = scripts.help.help_info:main",
         ]
     },
 )

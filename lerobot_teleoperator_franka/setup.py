@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="lerobot_teleoperator_ur5e",
+    name="lerobot_teleoperator_franka",
     version="0.0.1",
     description="LeRobot teleoperator integration",
     author="Chenyu Su",

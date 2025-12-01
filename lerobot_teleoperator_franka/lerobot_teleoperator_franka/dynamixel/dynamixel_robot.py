@@ -5,7 +5,7 @@ from .robot import Robot
 
 
 class DynamixelRobot(Robot):
-    """A class representing a UR5e robot."""
+    """A class representing a Franka robot."""
 
     def __init__(
         self,
