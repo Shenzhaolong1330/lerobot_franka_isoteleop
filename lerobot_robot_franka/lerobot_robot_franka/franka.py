@@ -36,11 +36,7 @@ class Franka(Robot):
         self._gripper_speed = 0.2
         self._gripper_epsilon = 1.0
         self._gripper_position = 1
-        self._velocity = 0.5 # not used in current version
-        self._acceleration = 0.5 # not used in current version
         self._dt = 0.002
-        self._lookahead_time = 0.2
-        self._gain = 100
         self._last_gripper_position = 1
         
     def connect(self) -> None:
@@ -87,7 +83,7 @@ class Franka(Robot):
             robot.joint_velocity_limit.set([2.1, 2.1, 2.1, 2.1, 2.1, 2.1, 2.1])
             robot.joint_acceleration_limit.set([5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0])
             robot.joint_jerk_limit.set([3750, 3750, 3750, 3750, 3750, 3750, 3750])
-            joint_positions = robot.current_joint_positions
+            joint_positions = robot.current_joint_state.position
             if joint_positions is not None and len(joint_positions) == 7:
                 formatted_joints = [round(j, 4) for j in joint_positions]
                 logger.info(f"[ROBOT] Current joint positions: {formatted_joints}")
@@ -286,10 +282,6 @@ class Franka(Robot):
     def disconnect(self) -> None:
         if not self.is_connected:
             return
-
-        # if self._arm is not None:
-        #     self._arm["rtde_c"].disconnect()
-        #     self._arm["rtde_r"].disconnect()
 
         for cam in self.cameras.values():
             cam.disconnect()

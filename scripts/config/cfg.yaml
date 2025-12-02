@@ -1,21 +1,20 @@
 record:
-  repo_id: &repo_id "scylearning/test" 
+  repo_id: &repo_id "scylearning/pick_greencube_into_trashbin" 
   # repo_id: &repo_id "scylearning/pick_greencube_into_trashbin" 
   # Suggested format: <hf_username>/<description>, description = task.description -> Verb_SourceObject_prep_TargetObject
   # e.g. Pick up the green cube and put it into the trash bin -> pick_greencube_into_trashbin
   debug: False # if True, robot will not execute any actions, but gripper can still be controlled
   user_notes:  # any additional notes about the dataset
-  fps: 6 # dataset and camera frame rate
+  fps: 15 # dataset and camera frame rate
 
   teleop:
     control_mode: "isoteleop"
     dynamixel_config:
       port: "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
       hardware_offsets: [0, 0, 0, 0, 0, 0, 0] # The Calibration offsets between the master and the slave robot
-      use_gripper: &use_gripper False # whether the slave robot can use gripper
+      use_gripper: &use_gripper True # whether the slave robot can use gripper
       joint_ids: [0, 1, 2, 3, 4, 5, 6]
-      # joint_offsets: [0.0, 3.142, 6.283, 4.712, 4.712, 6.283, 3.142]
-      joint_offsets: [0.157, 3.480, 6.248, 5.294, 4.716, 6.353, 2.428]
+      joint_offsets: [1.571, 0.0, 0.0, 0.0, 0.0, 0, 0]
       joint_signs: [1, 1, 1, 1, 1, -1, 1]
       gripper_config: [7, 1.03083509, 1.93895172] # id, min, max
       
@@ -43,8 +42,8 @@ record:
   cameras:
     wrist_cam_serial: "339322074423" # wrist camera serial number
     exterior_cam_serial: "243322071821" # exterior camera serial number
-    width: 640 # 640 424
-    height: 480 # 360 240
+    width: 424 # 640 424
+    height: 240 # 360 240
 
   storage:
     push_to_hub: False # whether to push the dataset to your huggingface repo after recording
@@ -54,7 +53,7 @@ replay:
   episode_idx: 0 # episode index to replay
   robot:
     ip: *ip
-    gripper_port: *gripper_port
+    # gripper_port: *gripper_port
 
 visualize:
   dataset_name: scylearning/pour_water_into_beaker_20251117_v01

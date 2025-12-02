@@ -7,8 +7,8 @@
 ## 1. Environment Setup
 ### 1.1 Create and Activate Conda Environment
 ```bash
-conda create -n ur_data python=3.10
-conda activate ur_data
+conda create -n franka_data python=3.10
+conda activate franka_data
 ```
 
 ### 1.2 Install lerobot
@@ -21,8 +21,8 @@ pip install -e lerobot
 
 ### 1.3 Clone and Install Franka Teleoperation Control Source
 ```bash
-mkdir ur_data_collection && cd ur_data_collection
-git clone https://github.com/scy-v/lerobot_franka_isoteleop.git
+mkdir franka_data_collection && cd franka_data_collection
+git clone https://github.com/Shenzhaolong1330/lerobot_franka_isoteleop.git
 cd lerobot_franka_isoteleop
 pip install -e .
 ```
