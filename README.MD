@@ -208,3 +208,16 @@ lerobot-edit-dataset
 ```bash
 tools-check-dataset
 ```
+
+## 10. Franka Control Instructions
+
+This version uses [franky-control](https://github.com/TimSchneider42/franky?tab=readme-ov-file#installing-franky) for control. The default installed version is compatible with libfranka 0.16.0. If you are using a different version of libfranka, please install according to [franky-control](https://github.com/TimSchneider42/franky?tab=readme-ov-file#installing-franky).
+
+Additionally, in actual testing, franky-control may produce inconsistent speed/acceleration control errors under more aggressive teleoperation movements. Therefore, the relative dynamics coefficients are set relatively small:
+
+```
+robot.relative_dynamics_factor = RelativeDynamicsFactor(0.3, 0.05, 0.05)
+```
+
+In practical use, there will be a "lagging" issue with teleoperation. Future optimizations will consider using the latest [pylibfranka](https://frankarobotics.github.io/libfranka/pylibfranka/latest/) for implementation.
+        
