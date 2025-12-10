@@ -28,6 +28,7 @@ cd lerobot_franka_isoteleop
 pip install -e .
 ```
 
+
 ### 1.4 查看可运行的命令
 运行以下命令以查看所有可用的脚本：
 ```bash
@@ -202,3 +203,16 @@ lerobot-edit-dataset
 ```bash
 tools-check-dataset
 ```
+
+
+## 10. franka control说明
+在这个版本中使用[franky-control](https://github.com/TimSchneider42/franky?tab=readme-ov-file#installing-franky)
+进行控制，默认安装的版本兼容libfranka 0.16.0, 若使用其他版本libfranka, 请根据[franky-control](https://github.com/TimSchneider42/franky?tab=readme-ov-file#installing-franky)
+进行安装。
+
+另外实测franky-control 在较为激烈的遥操作动作下，会出现控制速度/加速度不连贯的报错，
+因此相对的动力学系数设置的比较小:
+```
+robot.relative_dynamics_factor = RelativeDynamicsFactor(0.3, 0.05, 0.05) 
+```
+在实际使用中，摇操作会有“不跟手”的情况，后续优化会考虑使用最新的[pylibfranka](https://frankarobotics.github.io/libfranka/pylibfranka/latest/)来进行实现。
