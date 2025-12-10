@@ -1,6 +1,5 @@
 import logging
 import time
-from typing import Any
 import threading
 from pathlib import Path
 from lerobot.cameras import make_cameras_from_configs
@@ -9,11 +8,13 @@ from lerobot.robots.robot import Robot
 from .config_franka import FrankaConfig
 from typing import Any, Dict
 import yaml
-from franky import Robot as FrankaRobot
-from franky import Gripper as FrankaGripper
+from pylibfranka import Robot as FrankaRobot
+from pylibfranka import Gripper as FrankaGripper
+from pylibfranka import ControllerMode, JointPositions
+from scipy.spatial.transform import Rotation as R
+import numpy as np
 from lerobot.cameras.configs import ColorMode, Cv2Rotation
 from lerobot.cameras.realsense.camera_realsense import RealSenseCameraConfig
-from franky import JointMotion, ReferenceType, RelativeDynamicsFactor
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -27,7 +28,7 @@ class Franka(Robot):
 
         self.config = config
         self._is_connected = False
-        self._robot = None
+        self._robot_control = None
         self._gripper = None
         self._initial_pose = None
         self._prev_observation = None
@@ -44,7 +45,7 @@ class Franka(Robot):
             raise DeviceAlreadyConnectedError(f"{self.name} is already connected.")
 
         # Connect to robot
-        self._robot = self._check_franka_connection(self.config.robot_ip)
+        self._robot_control = self._check_franka_connection(self.config.robot_ip)
         
         # Initialize gripper
         if self.config.use_gripper:
@@ -67,9 +68,8 @@ class Franka(Robot):
     def _check_gripper_connection(self, robot_ip: str):
         logger.info("\n===== [GRIPPER] Initializing gripper...")
         gripper = FrankaGripper(robot_ip)
-        gripper.open(speed=0.2)
-        # gripper.init_feedback()
-        # gripper.set_force(self._gripper_force)
+        print("Homing gripper")
+        gripper.homing()
         logger.info("===== [GRIPPER] Gripper initialized successfully.\n")
         return gripper
 
@@ -78,17 +78,23 @@ class Franka(Robot):
         try:
             logger.info("\n===== [ROBOT] Connecting to Franka robot =====")
             robot = FrankaRobot(robot_ip)
-            # robot.relative_dynamics_factor = 0.2
-            # robot.relative_dynamics_factor = RelativeDynamicsFactor(1, 0.10, 0.10)
-            # robot.joint_velocity_limit.set([2.1, 2.1, 2.1, 2.1, 2.1, 2.1, 2.1])
-            # robot.joint_acceleration_limit.set([5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0])
-            # robot.joint_jerk_limit.set([3750, 3750, 3750, 3750, 3750, 3750, 3750])
-            
-            robot.relative_dynamics_factor = RelativeDynamicsFactor(0.3, 0.05, 0.05)  # reduce dynamics aggressiveness
-            robot.joint_velocity_limit.set([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
-            robot.joint_acceleration_limit.set([3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0])
-            robot.joint_jerk_limit.set([1200, 1200, 1200, 1200, 1200, 1200, 1200])
-            joint_positions = robot.current_joint_state.position
+
+            lower_torque_thresholds = [20.0, 20.0, 18.0, 18.0, 16.0, 14.0, 12.0]
+            upper_torque_thresholds = [20.0, 20.0, 18.0, 18.0, 16.0, 14.0, 12.0]
+            lower_force_thresholds = [20.0, 20.0, 20.0, 25.0, 25.0, 25.0]
+            upper_force_thresholds = [20.0, 20.0, 20.0, 25.0, 25.0, 25.0]
+
+            robot.set_collision_behavior(
+                lower_torque_thresholds,
+                upper_torque_thresholds,
+                lower_force_thresholds,
+                upper_force_thresholds,
+            )
+
+            robot_control = robot.start_joint_position_control(ControllerMode.JointImpedance)
+            robot_state, duration = robot_control.readOnce()
+
+            joint_positions = robot_state.q
             if joint_positions is not None and len(joint_positions) == 7:
                 formatted_joints = [round(j, 4) for j in joint_positions]
                 logger.info(f"[ROBOT] Current joint positions: {formatted_joints}")
@@ -100,7 +106,7 @@ class Franka(Robot):
             logger.info("===== [ERROR] Failed to connect to Franka robot =====")
             logger.info(f"Exception: {e}\n")
 
-        return robot
+        return robot_control
 
     def _start_gripper_state_reader(self):
         threading.Thread(target=self._read_gripper_state, daemon=True).start()
@@ -113,72 +119,17 @@ class Franka(Robot):
                 gripper_position = 1 - gripper_position
 
             if gripper_position != self._last_gripper_position:
-                # self._gripper.set_pos(val=int(1000 * gripper_position), blocking=False)
-                self._gripper.grasp(gripper_position, speed=self._gripper_speed, force = self._gripper_force, epsilon_outer=self._gripper_epsilon)
+                self._gripper.grasp(width = gripper_position, speed=self._gripper_speed, force = self._gripper_force, epsilon_outer=self._gripper_epsilon)
                 self._last_gripper_position = gripper_position
-
-            gripper_pos = self._gripper.width
+            
+            gripper_state = self._gripper.read_once()
+            gripper_pos = gripper_state.width
             if self.config.gripper_reverse:
                 gripper_pos = 1 - gripper_pos
 
             self._gripper_pos = gripper_pos
             time.sleep(0.01)
 
-    def _affine_to_xyzrpy(self, aff) -> tuple:
-        """
-        Robustly convert franky Affine-like object to (x,y,z,rx,ry,rz).
-        Avoids using boolean 'or' on numpy arrays and avoids indexing Affine directly.
-        """
-        # try sequence protocol
-        try:
-            seq = tuple(aff)
-            if len(seq) >= 6:
-                return tuple(float(v) for v in seq[:6])
-        except Exception:
-            pass
-
-        # direct scalar attributes
-        if all(hasattr(aff, a) for a in ("x", "y", "z")):
-            x = float(getattr(aff, "x"))
-            y = float(getattr(aff, "y"))
-            z = float(getattr(aff, "z"))
-            rx = float(getattr(aff, "rx", 0.0))
-            ry = float(getattr(aff, "ry", 0.0))
-            rz = float(getattr(aff, "rz", 0.0))
-            return (x, y, z, rx, ry, rz)
-
-        # safe lookup helper to avoid 'or' truth-evaluation issues
-        def _first_present(obj, names):
-            for n in names:
-                val = getattr(obj, n, None)
-                if val is not None:
-                    return val
-            return None
-
-        trans = _first_present(aff, ("translation", "t", "p", "position"))
-        rot = _first_present(aff, ("rotation", "orientation", "rpy", "euler"))
-
-        tx = ty = tz = 0.0
-        if trans is not None:
-            try:
-                seq = tuple(trans)
-                tx, ty, tz = (float(v) for v in seq[:3])
-            except Exception:
-                tx = float(getattr(trans, "x", getattr(trans, "tx", 0.0)))
-                ty = float(getattr(trans, "y", getattr(trans, "ty", 0.0)))
-                tz = float(getattr(trans, "z", getattr(trans, "tz", 0.0)))
-
-        rx = ry = rz = 0.0
-        if rot is not None:
-            try:
-                seq = tuple(rot)
-                rx, ry, rz = (float(v) for v in seq[:3])
-            except Exception:
-                rx = float(getattr(rot, "x", getattr(rot, "rx", 0.0)))
-                ry = float(getattr(rot, "y", getattr(rot, "ry", 0.0)))
-                rz = float(getattr(rot, "z", getattr(rot, "rz", 0.0)))
-
-        return (tx, ty, tz, rx, ry, rz)
 
     @property
     def _motors_ft(self) -> dict[str, type]:
@@ -260,16 +211,41 @@ class Franka(Robot):
         }
 
     def send_action(self, action: dict[str, Any]) -> dict[str, Any]:
+        # print("send action:", action)
         if not self.is_connected:
             raise DeviceNotConnectedError(f"{self} is not connected.")
 
         joint_positions = [action[f"joint_{i+1}.pos"] for i in range(self._num_joints)]
         
-        formatted_positions = [round(float(pos), 3) for pos in joint_positions]
-        # print("action:", formatted_positions, action["gripper_position"])
         if not self.config.debug:
-            self._robot.move(JointMotion(joint_positions, ReferenceType.Absolute, return_when_finished=True), asynchronous=True)
-
+            # 获取当前关节位置
+            robot_state, duration = self._robot_control.readOnce()
+            curr_joints = np.array(robot_state.q)
+            target_joints = np.array(joint_positions)
+            
+            # 计算最大关节位置差
+            max_delta = (np.abs(curr_joints - target_joints)).max()
+            
+            # 如果最大差值超过阈值，则进行插值移动
+            if max_delta > 0.1:  # 设置一个合理的阈值
+                steps = min(int(max_delta / 0.01), 100)
+                
+                # 在当前位置和目标位置之间进行插值移动
+                for i, jnt in enumerate(np.linspace(curr_joints, target_joints, steps)):
+                    # 发送插值动作
+                    joint_positions_obj = JointPositions(jnt.tolist())
+                    # 设置motion_finished标志
+                    if i == steps - 1:
+                        joint_positions_obj.motion_finished = True
+                    self._robot_control.writeOnce(joint_positions_obj)
+                    # 短暂延时
+                    time.sleep(0.001)
+            else:
+                # 直接发送目标位置
+                joint_positions_obj = JointPositions(target_joints.tolist())
+                joint_positions_obj.motion_finished = True
+                self._robot_control.writeOnce(joint_positions_obj)
+            
         if "gripper_position" in action:
             self._gripper_position = action["gripper_position"]
         return action
@@ -278,22 +254,26 @@ class Franka(Robot):
         if not self.is_connected:
             raise DeviceNotConnectedError(f"{self} is not connected.")
         
+        robot_state, duration = self._robot_control.readOnce()
         # Read joint positions
-        joint_position = self._robot.current_joint_state.position
+        joint_position = robot_state.q_d
         # print("joint_position:", joint_position)
         # Read joint velocities
-        joint_velocity = self._robot.current_joint_state.velocity
+        joint_velocity = robot_state.dq_d
         # print("joint_velocity:", joint_velocity)
         # Read ee pose
-        cartesian_state = self._robot.current_cartesian_state
-        robot_pose = cartesian_state.pose  # Contains end-effector pose and elbow position
-        ee_pose = robot_pose.end_effector_pose
+        O_T_EE = robot_state.O_T_EE_d
+        # print("O_T_EE:", O_T_EE)
+        O_T_EE = np.array(O_T_EE).reshape(4, 4).T
+        position = O_T_EE[:3, 3]
+        rotation_matrix = O_T_EE[:3, :3]
+        r = R.from_matrix(rotation_matrix)
+        euler_angles = r.as_euler('xyz', degrees=True)
+        ee_pose = np.concatenate([position, euler_angles])
         # print("ee_pose:", ee_pose)
 
-
         # Read ee speed
-        robot_velocity = cartesian_state.velocity  # Contains end-effector twist and elbow velocity
-        ee_speed = robot_velocity.end_effector_twist
+        ee_speed = robot_state.O_dP_EE_d
         # print("ee_speed:", ee_speed)
         
         # Prepare observation dictionary
@@ -302,29 +282,11 @@ class Franka(Robot):
             obs_dict[f"joint_{i+1}.pos"] = float(joint_position[i])
             obs_dict[f"joint_{i+1}.vel"] = float(joint_velocity[i])
 
-        # use safe converter for Affine-like ee_pose
-        ee_vals = self._affine_to_xyzrpy(ee_pose)
         for i, axis in enumerate(["x", "y", "z", "rx", "ry", "rz"]):
-            obs_dict[f"ee_pose.{axis}"] = float(ee_vals[i])
-
-        # safe read ee velocity -> use keys ee_vel.* to match _motors_ft
-        try:
-            speed_seq = tuple(ee_speed)
-            for i, axis in enumerate(["x", "y", "z", "rx", "ry", "rz"]):
-                obs_dict[f"ee_vel.{axis}"] = float(speed_seq[i])
-        except Exception:
-            sx = float(getattr(ee_speed, "x", getattr(ee_speed, "linear_x", 0.0)))
-            sy = float(getattr(ee_speed, "y", getattr(ee_speed, "linear_y", 0.0)))
-            sz = float(getattr(ee_speed, "z", getattr(ee_speed, "linear_z", 0.0)))
-            srx = float(getattr(ee_speed, "rx", getattr(ee_speed, "angular_x", 0.0)))
-            sry = float(getattr(ee_speed, "ry", getattr(ee_speed, "angular_y", 0.0)))
-            srz = float(getattr(ee_speed, "rz", getattr(ee_speed, "angular_z", 0.0)))
-            obs_dict["ee_vel.x"] = sx
-            obs_dict["ee_vel.y"] = sy
-            obs_dict["ee_vel.z"] = sz
-            obs_dict["ee_vel.rx"] = srx
-            obs_dict["ee_vel.ry"] = sry
-            obs_dict["ee_vel.rz"] = srz
+            obs_dict[f"ee_pose.{axis}"] = float(ee_pose[i])
+  
+        for i, axis in enumerate(["x", "y", "z", "rx", "ry", "rz"]):
+            obs_dict[f"ee_vel.{axis}"] = float(ee_speed[i])
 
         if self.config.use_gripper:
             obs_dict["gripper_raw_position"] = self._gripper_pos

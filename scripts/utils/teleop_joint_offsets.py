@@ -4,7 +4,8 @@ import yaml
 import numpy as np
 import logging
 
-from franky import Robot as FrankaRobot
+from pylibfranka import Robot as FrankaRobot
+from pylibfranka import ControllerMode
 from lerobot_teleoperator_franka.dynamixel import DynamixelDriver
 
 # ------------------------ Logging Setup ------------------------ #
@@ -17,7 +18,9 @@ def get_start_joints(cfg) -> List[float]:
     try:
         logger.info("\n===== [ROBOT] Connecting to Franka robot =====")
         robot = FrankaRobot(cfg.robot_ip)
-        joint_positions = robot.current_joint_positions
+        robot_control = robot.start_joint_position_control(ControllerMode.JointImpedance)
+        robot_state, duration = robot_control.readOnce()
+        joint_positions = robot_state.q
         logger.info(f"[ROBOT] Current joint positions: {joint_positions}")
         logger.info("===== [ROBOT] Franka connected successfully =====\n")
         return joint_positions

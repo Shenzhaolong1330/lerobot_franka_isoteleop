@@ -71,7 +71,8 @@ class FrankaTeleop(Teleoperator):
                 real=True
                 )
         joint_positions = self.dynamixel_robot.get_joint_state()
-        logger.info(f"[TELEOP] Current joint positions: {joint_positions.tolist()}")
+        formatted_joints = [round(float(j), 4) for j in joint_positions]
+        logger.info(f"[TELEOP] Current joint positions: {formatted_joints}")
         logger.info("===== [TELEOP] Dynamixel robot connected successfully. =====\n")
     
     def calibrate(self) -> None:

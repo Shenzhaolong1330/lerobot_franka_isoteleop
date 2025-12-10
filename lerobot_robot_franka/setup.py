@@ -9,7 +9,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "pyrealsense2",
-        "franky-control"
+        "scipy",
     ],
     python_requires=">=3.10",
     classifiers=[
