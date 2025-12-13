@@ -12,7 +12,7 @@ In this version, we use [Polymetis](https://polymetis-docs.github.io/) to contro
 
 We have open-sourced the optimized source code for Franka at [Polymetis](https://github.com/Shenzhaolong1330/fairo-franka/tree/main). For detailed installation instructions, please refer to [FRANKA.md](https://github.com/Shenzhaolong1330/fairo-franka/blob/main/polymetis/FRANKA.md).
 
-### 2. Start Server on NUC
+### 0.2. Start Server on NUC
 
 Start [launch_robot](https://github.com/Shenzhaolong1330/fairo-franka/blob/main/polymetis/polymetis/python/scripts/launch_robot.py), [launch_gripper](https://github.com/Shenzhaolong1330/fairo-franka/blob/main/polymetis/polymetis/python/scripts/launch_gripper.py), and [franka_interface_server](https://github.com/Shenzhaolong1330/fairo-franka/blob/main/polymetis/polymetis/python/polymetis/franka_interface_server.py) respectively.
 
@@ -23,7 +23,7 @@ python launch_gripper.py gripper=franka_hand
 python franka_interface_server.py
 ```
 
-### 3. Start [interface client](lerobot_robot_franka\lerobot_robot_franka\franka_interface_client.py) locally
+<!-- ### 0.3 Start [interface client](lerobot_robot_franka\lerobot_robot_franka\franka_interface_client.py) locally
 
 Before attempting to connect to Franka, start the [interface client](lerobot_robot_franka\lerobot_robot_franka\franka_interface_client.py).
 
@@ -33,7 +33,7 @@ python franka_interface_client.py
 ```
 
 The functions in the [interface client](lerobot_robot_franka\lerobot_robot_franka\franka_interface_client.py) are basically the same as those in Polymetis. For usage, please refer to [Polymetis](https://polymetis-docs.github.io/).
-        
+         -->
 
 ## 1. Environment Setup
 ### 1.1 Create and Activate Conda Environment

@@ -16,13 +16,13 @@ python launch_robot.py robot_client=franka_hardware
 python launch_gripper.py gripper=franka_hand
 python franka_interface_server.py
 ```
-### 3. 在本地启动[interface client](lerobot_robot_franka\lerobot_robot_franka\franka_interface_client.py)
+<!-- ### 3. 在本地启动[interface client](lerobot_robot_franka\lerobot_robot_franka\franka_interface_client.py)
 在尝试链接Franka前，启动[interface client](lerobot_robot_franka\lerobot_robot_franka\franka_interface_client.py)
 ```
 # On the local machine
 python franka_interface_client.py
 ```
-[interface client](lerobot_robot_franka\lerobot_robot_franka\franka_interface_client.py)中的函数功能与Polymetis中的函数功能基本一致，使用方法可以参考[Polymetis文档](https://polymetis-docs.github.io/)。
+[interface client](lerobot_robot_franka\lerobot_robot_franka\franka_interface_client.py)中的函数功能与Polymetis中的函数功能基本一致，使用方法可以参考[Polymetis文档](https://polymetis-docs.github.io/)。 -->
 
 
 ## 1. 环境配置
