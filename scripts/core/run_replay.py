@@ -27,8 +27,9 @@ def run_replay(replay_cfg: ReplayConfig):
     robot_config = FrankaConfig(
         robot_ip=replay_cfg.robot_ip,
         # gripper_port=replay_cfg.gripper_port,
+        debug = False,
     )
-
+    
     robot = robot = Franka(robot_config)
     robot.connect()
     dataset = LeRobotDataset(replay_cfg.dataset_name, episodes=[episode_idx])
@@ -39,6 +40,7 @@ def run_replay(replay_cfg: ReplayConfig):
         action = {
             name: float(actions[idx]["action"][i]) for i, name in enumerate(dataset.features["action"]["names"])
         }
+        # print(f"action: {action}")
         robot.send_action(action)
 
         busy_wait(1.0 / dataset.fps - (time.perf_counter() - t0))

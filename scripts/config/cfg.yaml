@@ -32,7 +32,7 @@ record:
   task:
     # description: "Pick up the green cube and put it into the trash bin." # task description
     description: "test by shenzhaolong" # task description
-    num_episodes: 100 # number of episodes to record
+    num_episodes: 10 # number of episodes to record
     display: True # Whether to display the data during recording
     resume: False # whether to resume from an existing dataset
     resume_dataset: shenzhaolong/test_dataset_20251205_v02 # dataset to resume from if resume is True
@@ -52,12 +52,12 @@ record:
     push_to_hub: False # whether to push the dataset to your huggingface repo after recording
 
 replay:
-  dataset_name: shenzhaolong/test_replay_dataset_20251213_v03
-  episode_idx: 0 # episode index to replay
+  dataset_name: shenzhaolong/test_replay_dataset_20251213_v07
+  episode_idx: 1 # episode index to replay
   robot:
     ip: *ip
     # gripper_port: *gripper_port
 
 visualize:
-  dataset_name: shenzhaolong/test_replay_dataset_20251213_v03
+  dataset_name: shenzhaolong/test_replay_dataset_20251213_v07
   episode_index: 0 # episode index to visualize
