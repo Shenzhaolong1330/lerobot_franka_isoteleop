@@ -1,5 +1,5 @@
 '''
-running on the NUC connected to the franka robot
+run on the NUC connected to the franka robot
 to provide zerorpc server interface
 '''
 
@@ -24,12 +24,16 @@ class FrankaInterfaceServer:
         width: float, 
         speed: float, 
         force: float, 
+        epsilon_inner: float = -1.0,
+        epsilon_outer: float = -1.0,
         blocking: bool = True
     ):
         self.gripper.goto(
             width=width,
             speed=speed,
             force=force,
+            epsilon_inner=epsilon_inner,
+            epsilon_outer=epsilon_outer,
             blocking=blocking,
         )
 

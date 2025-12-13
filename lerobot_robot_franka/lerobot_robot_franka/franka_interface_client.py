@@ -20,6 +20,8 @@ class FrankaInterfaceClient:
         width: float, 
         speed: float, 
         force: float, 
+        epsilon_inner: float = -1.0,
+        epsilon_outer: float = -1.0,
         blocking: bool = True
     ):
         # self.server.gripper_goto(
@@ -28,7 +30,7 @@ class FrankaInterfaceClient:
         #     force=force,
         #     blocking=blocking,
         # )
-        self.server.gripper_goto(width, speed, force, blocking)
+        self.server.gripper_goto(width, speed, force, epsilon_inner, epsilon_outer, blocking)
 
     def gripper_grasp(
         self,
@@ -156,8 +158,10 @@ class FrankaInterfaceClient:
 if __name__ == "__main__":
     
     Franka = FrankaInterfaceClient()
-    
-    Franka.gripper_goto(width=0.08, speed=0.1, force=10.0)
+    Franka.gripper_initialize()
+    Franka.gripper_goto(width=0.08, speed=0.1, force=10.0, epsilon_inner=0.0, epsilon_outer=0.0)
+    gripper_state = Franka.gripper_get_state()
+    print(f"Current gripper state: {gripper_state}")
     
     # Franka.gripper_goto(width=0.08, speed=0.1, force=10.0)
     # Reset
