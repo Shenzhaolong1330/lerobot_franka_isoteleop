@@ -1,6 +1,16 @@
 # Franka Master-Slave Teleoperation Data Collection
+
 <p align="center">
   <img src="assets/robot.png" alt="Record" width="600">
+  <br>
+</p>
+
+## COMING SOON
+
+There will be an update to this project that adapts to the end pose control using [SpaceMouse](https://3dconnexion.com/) devices soon.
+
+<p align="center">
+  <img src="assets/spacemouse.png" alt="Record" width="600">
   <br>
 </p>
 
