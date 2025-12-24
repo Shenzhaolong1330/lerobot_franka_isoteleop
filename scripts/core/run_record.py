@@ -30,6 +30,7 @@ class RecordConfig:
         robot = cfg["robot"]
         teleop = cfg["teleop"]
         dxl_cfg = teleop["dynamixel_config"]
+        sm_cfg = teleop["spacemouse_config"]
 
         # global config
         self.repo_id: str = cfg["repo_id"]
@@ -38,16 +39,21 @@ class RecordConfig:
         self.dataset_path: str = HF_LEROBOT_HOME / self.repo_id
         self.user_info: str = cfg.get("user_notes", None)
 
-        # teleop config
-        self.port = dxl_cfg["port"]
-        self.use_gripper = dxl_cfg["use_gripper"]  
-        self.joint_ids = dxl_cfg["joint_ids"]
-        self.joint_offsets = dxl_cfg["joint_offsets"]
-        self.joint_signs = dxl_cfg["joint_signs"]
-        self.gripper_config = dxl_cfg["gripper_config"]
-        self.hardware_offsets = dxl_cfg["hardware_offsets"]
-        self.control_mode = teleop.get("control_mode", "isoteleop")
-        
+        if teleop["control_mode"] == "isoteleop":
+            # teleop config
+            self.port = dxl_cfg["port"]
+            self.use_gripper = dxl_cfg["use_gripper"]  
+            self.joint_ids = dxl_cfg["joint_ids"]
+            self.joint_offsets = dxl_cfg["joint_offsets"]
+            self.joint_signs = dxl_cfg["joint_signs"]
+            self.gripper_config = dxl_cfg["gripper_config"]
+            self.hardware_offsets = dxl_cfg["hardware_offsets"]
+            self.control_mode = teleop.get("control_mode", "isoteleop")
+        elif teleop["control_mode"] == "spacemouse":
+            self.use_gripper = sm_cfg["use_gripper"]
+            self.pose_scaler = sm_cfg["pose_scaler"]
+            self.control_mode = teleop.get("control_mode", "spacemouse")
+
         # robot config
         self.robot_ip: str = robot["ip"]
         # self.gripper_port: str = robot["gripper_port"]
@@ -136,15 +142,22 @@ def run_record(record_cfg: RecordConfig):
 
         # Create the robot and teleoperator configurations
         camera_config = {"wrist_image": wrist_image_cfg, "exterior_image": exterior_image_cfg}
-        teleop_config = FrankaTeleopConfig(        
-            port=record_cfg.port,
-            use_gripper=record_cfg.use_gripper,
-            hardware_offsets=record_cfg.hardware_offsets,
-            joint_ids=record_cfg.joint_ids,
-            joint_offsets=record_cfg.joint_offsets,
-            joint_signs=record_cfg.joint_signs,
-            gripper_config=record_cfg.gripper_config,
-            control_mode=record_cfg.control_mode)
+        if record_cfg.control_mode == "isoteleop":
+            teleop_config = FrankaTeleopConfig(        
+                port=record_cfg.port,
+                use_gripper=record_cfg.use_gripper,
+                hardware_offsets=record_cfg.hardware_offsets,
+                joint_ids=record_cfg.joint_ids,
+                joint_offsets=record_cfg.joint_offsets,
+                joint_signs=record_cfg.joint_signs,
+                gripper_config=record_cfg.gripper_config,
+                control_mode=record_cfg.control_mode)
+        elif record_cfg.control_mode == "spacemouse":
+            teleop_config = FrankaTeleopConfig(
+                use_gripper=record_cfg.use_gripper,
+                pose_scaler=record_cfg.pose_scaler,
+                control_mode=record_cfg.control_mode,       
+            )
         
         robot_config = FrankaConfig(
             robot_ip=record_cfg.robot_ip,
@@ -153,7 +166,8 @@ def run_record(record_cfg: RecordConfig):
             close_threshold = record_cfg.close_threshold,
             use_gripper = record_cfg.use_gripper,
             gripper_reverse = record_cfg.gripper_reverse,
-            gripper_bin_threshold = record_cfg.gripper_bin_threshold
+            gripper_bin_threshold = record_cfg.gripper_bin_threshold,
+            control_mode = record_cfg.control_mode,
         )
         # Initialize the robot and teleoperator
         robot = Franka(robot_config)

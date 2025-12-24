@@ -6,9 +6,10 @@ record:
   debug: False # if True, robot will not execute any actions, but gripper can still be controlled
   user_notes:  # any additional notes about the dataset
   fps: 15 # dataset and camera frame rate
+  control_mode: &control_mode "spacemouse" # "isoteleop" or "spacemouse"
 
   teleop:
-    control_mode: "isoteleop"
+    control_mode: *control_mode 
     dynamixel_config:
       port: "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
       # hardware_offsets: [0, 0, 0, 0, 0, 0, 0] # The Calibration offsets between the master and the slave robot
@@ -18,6 +19,10 @@ record:
       joint_offsets: [6.283, 3.142, 6.283, 4.712, 4.712, 6.283, 2.496]
       joint_signs: [1, 1, 1, 1, 1, -1, 1]
       gripper_config: [7, 0.9664079, 1.9404857] # id, min, max
+    spacemouse_config:
+      joint_ids: [0, 1, 2, 3, 4, 5]
+      use_gripper: *use_gripper # whether the spacemouse robot can use gripper
+      pose_scaler: [0,01, 0.01] # scaler for spacemouse actions [position, attitude]
       
   robot:
     # ip: &ip "172.16.0.2" # robot ip

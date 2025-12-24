@@ -19,23 +19,25 @@ class Robot(Protocol):
         """
         raise NotImplementedError
 
+
     @abstractmethod
-    def get_joint_state(self) -> np.ndarray:
-        """Get the current state of the leader robot.
+    def get_action(self) -> np.ndarray:
+        """Get the current pose of the end-effector.
 
         Returns:
-            T: The current state of the leader robot.
+            np.ndarray: The current pose of the end-effector.
         """
         raise NotImplementedError
+    
+    # @abstractmethod
+    # def command_ee_pose(self, ee_pose: np.ndarray) -> None:
+    #     """Command the leader robot to a given pose.
 
-    @abstractmethod
-    def command_joint_state(self, joint_state: np.ndarray) -> None:
-        """Command the leader robot to a given state.
+    #     Args:
+    #         ee_pose (np.ndarray): The pose to command the leader robot to.
+    #     """
+    #     raise NotImplementedError
 
-        Args:
-            joint_state (np.ndarray): The state to command the leader robot to.
-        """
-        raise NotImplementedError
     @abstractmethod
     def get_observations(self) -> Dict[str, np.ndarray]:
         """Get the current observations of the robot.
@@ -94,12 +96,12 @@ class BimanualRobot(Robot):
 
     def get_joint_state(self) -> np.ndarray:
         return np.concatenate(
-            (self._robot_l.get_joint_state(), self._robot_r.get_joint_state())
+            (self._robot_l.get_action(), self._robot_r.get_action())
         )
 
-    def command_joint_state(self, joint_state: np.ndarray) -> None:
-        self._robot_l.command_joint_state(joint_state[: self._robot_l.num_dofs()])
-        self._robot_r.command_joint_state(joint_state[self._robot_l.num_dofs() :])
+    # def command_joint_state(self, joint_state: np.ndarray) -> None:
+    #     self._robot_l.command_ee_pose(joint_state[: self._robot_l.num_dofs()])
+    #     self._robot_r.command_ee_pose(joint_state[self._robot_l.num_dofs() :])
 
     def get_observations(self) -> Dict[str, np.ndarray]:
         l_obs = self._robot_l.get_observations()

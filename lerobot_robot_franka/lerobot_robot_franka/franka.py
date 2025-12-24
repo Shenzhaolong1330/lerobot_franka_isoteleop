@@ -159,64 +159,115 @@ class Franka(Robot):
 
     @property
     def action_features(self) -> dict[str, type]:
-        return {
-            "joint_1.pos": float,
-            "joint_2.pos": float,
-            "joint_3.pos": float,
-            "joint_4.pos": float,
-            "joint_5.pos": float,
-            "joint_6.pos": float,
-            "joint_7.pos": float,
-            "gripper_position": float,
-        }
+        if self.config.control_mode == "isoteleop":
+            # print("using control mode: ", self.config.control_mode)
+            return {
+                "joint_1.pos": float,
+                "joint_2.pos": float,
+                "joint_3.pos": float,
+                "joint_4.pos": float,
+                "joint_5.pos": float,
+                "joint_6.pos": float,
+                "joint_7.pos": float,
+                "gripper_position": float,
+            }
+        elif self.config.control_mode == "spacemouse":
+            # print("using control mode: ", self.config.control_mode)
+            return {
+                "delta_ee_pose.x": float,
+                "delta_ee_pose.y": float,
+                "delta_ee_pose.z": float,
+                "delta_ee_pose.rx": float,
+                "delta_ee_pose.ry": float,
+                "delta_ee_pose.rz": float,
+                "gripper_cmd_bin": float,
+            }
 
     def send_action(self, action: dict[str, Any]) -> dict[str, Any]:
         if not self.is_connected:
             raise DeviceNotConnectedError(f"{self} is not connected.")
 
-        target_joints = np.array([action[f"joint_{i+1}.pos"] for i in range(self._num_joints)])
-        
-        if not self.config.debug:
-            # 获取当前关节位置
-            joint_positions = self._robot.robot_get_joint_positions()
+        if self.config.control_mode == "isoteleop":
+            # print("using control mode: ", self.config.control_mode)
+            target_joints = np.array([action[f"joint_{i+1}.pos"] for i in range(self._num_joints)])
             
-            # 计算最大关节位置差
-            max_delta = (np.abs(joint_positions - target_joints)).max()
-            
-            # 如果最大差值超过阈值，则进行插值移动
-            if max_delta > 0.1:  # 设置一个合理的阈值
-                print("move too far, interpolate")
-                steps = min(int(max_delta / 0.05), 100)
+            if not self.config.debug:
+                # 获取当前关节位置
+                joint_positions = self._robot.robot_get_joint_positions()
                 
-                # 在当前位置和目标位置之间进行插值移动
-                for i, jnt in enumerate(np.linspace(joint_positions, target_joints, steps)):
-                    self._robot.robot_update_desired_joint_positions(jnt)
-            else:
-                # 直接发送目标位置
-                self._robot.robot_update_desired_joint_positions(target_joints)
-            
-            
-        if "gripper_position" in action:
-            gripper_position = 0.0 if action["gripper_position"]  < self.config.close_threshold else 1.0
-            if self.config.gripper_reverse:
-                gripper_position = 1 - gripper_position
+                # 计算最大关节位置差
+                max_delta = (np.abs(joint_positions - target_joints)).max()
+                
+                # 如果最大差值超过阈值，则进行插值移动
+                if max_delta > 0.1:  # 设置一个合理的阈值
+                    print("move too far, interpolate")
+                    steps = min(int(max_delta / 0.05), 100)
+                    
+                    # 在当前位置和目标位置之间进行插值移动
+                    for i, jnt in enumerate(np.linspace(joint_positions, target_joints, steps)):
+                        self._robot.robot_update_desired_joint_positions(jnt)
+                else:
+                    # 直接发送目标位置
+                    self._robot.robot_update_desired_joint_positions(target_joints)
+                
+                
+            if "gripper_position" in action:
+                gripper_position = 0.0 if action["gripper_position"]  < self.config.close_threshold else 1.0
+                if self.config.gripper_reverse:
+                    gripper_position = 1 - gripper_position
 
-            if gripper_position != self._last_gripper_position:
-                self._robot.gripper_goto(
-                    width = gripper_position*self.config.gripper_max_open, 
-                    speed=self._gripper_speed, 
-                    force = self._gripper_force, 
-                    # epsilon_outer=self._gripper_epsilon
-                )
-                self._last_gripper_position = gripper_position
-            
-            gripper_state = self._robot.gripper_get_state()
-            gripper_state_norm = max(0.0, min(1.0, gripper_state["width"]/self.config.gripper_max_open))
-            if self.config.gripper_reverse:
-                gripper_state_norm = 1 - gripper_state_norm
+                if gripper_position != self._last_gripper_position:
+                    self._robot.gripper_goto(
+                        width = gripper_position*self.config.gripper_max_open, 
+                        speed=self._gripper_speed, 
+                        force = self._gripper_force, 
+                        # epsilon_outer=self._gripper_epsilon
+                    )
+                    self._last_gripper_position = gripper_position
+                
+                gripper_state = self._robot.gripper_get_state()
+                gripper_state_norm = max(0.0, min(1.0, gripper_state["width"]/self.config.gripper_max_open))
+                if self.config.gripper_reverse:
+                    gripper_state_norm = 1 - gripper_state_norm
 
-            self._gripper_position = gripper_state_norm
-            # self._read_gripper_state()
+                self._gripper_position = gripper_state_norm
+
+        elif self.config.control_mode == "spacemouse":
+            # print("using control mode: ", self.config.control_mode)
+            delta_ee_pose = np.array([action[f"delta_ee_pose.{axis}"] for axis in ["x", "y", "z", "rx", "ry", "rz"]])
+            # delta_ee_pose = np.array([float(action[f"delta_ee_pose.{axis}"][0][0]) for axis in ["x", "y", "z", "rx", "ry", "rz"]])
+            # delta_ee_pose = delta_ee_pose.squeeze(1)
+
+            if not self.config.debug:
+
+                ee_pose = self._robot.robot_get_ee_pose()
+                # print("ee_pose:", ee_pose)
+                # print("delta_ee_pose:",delta_ee_pose)
+                target_ee_pose = ee_pose + delta_ee_pose
+                # print("target_ee_pose:", target_ee_pose)
+                self._robot.robot_update_desired_ee_pose(target_ee_pose)
+            
+            if "gripper_cmd_bin" in action:
+                gripper_position = action["gripper_cmd_bin"]
+                if self.config.gripper_reverse:
+                    gripper_position = 1 - gripper_position
+
+                if gripper_position != self._last_gripper_position:
+                    self._robot.gripper_goto(
+                        width = gripper_position*self.config.gripper_max_open, 
+                        speed=self._gripper_speed, 
+                        force = self._gripper_force, 
+                        # epsilon_outer=self._gripper_epsilon
+                    )
+                    self._last_gripper_position = gripper_position
+                
+                gripper_state = self._robot.gripper_get_state()
+                gripper_state_norm = max(0.0, min(1.0, gripper_state["width"]/self.config.gripper_max_open))
+                if self.config.gripper_reverse:
+                    gripper_state_norm = 1 - gripper_state_norm
+
+                self._gripper_position = gripper_state_norm
+            
         return action
 
     def get_observation(self) -> dict[str, Any]:
@@ -338,6 +389,7 @@ if __name__ == "__main__":
             self.close_threshold = robot["close_threshold"]
             self.gripper_bin_threshold = robot["gripper_bin_threshold"]
             self.gripper_reverse = robot["gripper_reverse"]
+            self.control_mode = robot["control_mode"]
 
 
             # cameras config
@@ -380,7 +432,8 @@ if __name__ == "__main__":
             close_threshold = record_cfg.close_threshold,
             use_gripper = record_cfg.use_gripper,
             gripper_reverse = record_cfg.gripper_reverse,
-            gripper_bin_threshold = record_cfg.gripper_bin_threshold
+            gripper_bin_threshold = record_cfg.gripper_bin_threshold,
+            control_mode = record_cfg.control_mode
         )
     franka = Franka(robot_config)
     franka.connect()

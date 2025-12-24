@@ -17,6 +17,7 @@
 import logging
 from pathlib import Path
 from .dynamixel.dynamixel_robot import DynamixelRobot
+from .spacemouse.spacemouse_robot import SpaceMouseRobot
 from typing import Any, Dict
 import yaml
 from lerobot.utils.errors import DeviceNotConnectedError
@@ -31,11 +32,20 @@ class FrankaTeleop(Teleoperator):
 
     config_class = FrankaTeleopConfig
     name = "IsoTeleop"
-
+    
     def __init__(self, config: FrankaTeleopConfig):
         super().__init__(config)
         self.cfg = config
         self._is_connected = False
+        self.name = "unnamed"
+        if config.control_mode == "isoteleop":
+            self.name = "IsoTeleop"
+        elif config.control_mode == "spacemouse":
+            self.name = "SpacemouseTeleop"
+        else:
+            self.name = "unnamed"
+            raise ValueError(f"Unknown control mode: {config.control_mode}")
+        
 
     @property
     def action_features(self) -> dict:
@@ -54,8 +64,13 @@ class FrankaTeleop(Teleoperator):
         pass
 
     def connect(self) -> None:
-        self._check_dynamixel_connection()
-        self._is_connected = True
+        if self.cfg.control_mode == "isoteleop":
+            self._check_dynamixel_connection()
+            self._is_connected = True
+        elif self.cfg.control_mode == "spacemouse":
+            self._check_spacemouse_connection()
+            self._is_connected = True
+
         logger.info(f"[INFO] {self.name} env initialization completed successfully.\n")
 
     def _check_dynamixel_connection(self) -> None:
@@ -75,6 +90,17 @@ class FrankaTeleop(Teleoperator):
         logger.info(f"[TELEOP] Current joint positions: {formatted_joints}")
         logger.info("===== [TELEOP] Dynamixel robot connected successfully. =====\n")
     
+    def _check_spacemouse_connection(self) -> None:
+        logger.info("\n===== [TELEOP] Connecting to spacemouse =====")
+        self.spacemouse_robot = SpaceMouseRobot(
+            use_gripper=self.cfg.use_gripper,
+            pose_scaler=self.cfg.pose_scaler,
+            )
+        actions = self.spacemouse_robot.get_action()
+        formatted_actions = [round(float(j), 4) for j in actions]
+        logger.info(f"[TELEOP] Current ee pose actions: {formatted_actions}")
+        logger.info("===== [TELEOP] Spacemouse connected successfully. =====\n")
+
     def calibrate(self) -> None:
         pass
 
@@ -82,7 +108,10 @@ class FrankaTeleop(Teleoperator):
         pass
 
     def get_action(self) -> dict[str, Any]:
-        return self.dynamixel_robot.get_observations()
+        if self.cfg.control_mode == "isoteleop":
+            return self.dynamixel_robot.get_observations()
+        elif self.cfg.control_mode == "spacemouse":
+            return self.spacemouse_robot.get_observations()
 
     def send_feedback(self, feedback: dict[str, Any]) -> None:
         pass
@@ -91,7 +120,11 @@ class FrankaTeleop(Teleoperator):
         if not self.is_connected:
             return
         
-        self.dynamixel_robot._driver.close()
+        if self.cfg.control_mode == "isoteleop":
+            self.dynamixel_robot._driver.close()
+        elif self.cfg.control_mode == "spacemouse":
+            self.spacemouse_robot._expert.close()
+            pass
         logger.info(f"[INFO] ===== All {self.name} connections have been closed =====")
 
 if __name__ == "__main__":
@@ -103,31 +136,45 @@ if __name__ == "__main__":
         def __init__(self, cfg: Dict[str, Any]):
             teleop = cfg["teleop"]
             dxl_cfg = teleop["dynamixel_config"]
+            sm_cfg = teleop["spacemouse_config"]
 
-            # teleop config
-            self.port = dxl_cfg["port"]
-            self.use_gripper = dxl_cfg["use_gripper"]  
-            self.joint_ids = dxl_cfg["joint_ids"]
-            self.hardware_offsets = dxl_cfg["hardware_offsets"]
-            self.joint_offsets = dxl_cfg["joint_offsets"]
-            self.joint_signs = dxl_cfg["joint_signs"]
-            self.gripper_config = dxl_cfg["gripper_config"]
-            self.control_mode = teleop.get("control_mode", "isoteleop")
+            if teleop["control_mode"] == "isoteleop":
+                # dxl teleop config
+                self.port = dxl_cfg["port"]
+                self.use_gripper = dxl_cfg["use_gripper"]  
+                self.joint_ids = dxl_cfg["joint_ids"]
+                self.hardware_offsets = dxl_cfg["hardware_offsets"]
+                self.joint_offsets = dxl_cfg["joint_offsets"]
+                self.joint_signs = dxl_cfg["joint_signs"]
+                self.gripper_config = dxl_cfg["gripper_config"]
+                self.control_mode = teleop.get("control_mode", "isoteleop")
+            elif teleop["control_mode"] == "spacemouse":
+                # sm teleop config
+                self.use_gripper = sm_cfg["use_gripper"]  
+                self.pose_scaler = sm_cfg["pose_scaler"]
+                self.control_mode = teleop.get("control_mode", "spacemouse")
     
     with open(Path(__file__).parent / "config" / "cfg.yaml", "r") as f:
         cfg = yaml.safe_load(f)
 
     record_cfg = RecordConfig(cfg["record"])
-    teleop_config = FrankaTeleopConfig(
-        port=record_cfg.port,
-        use_gripper=record_cfg.use_gripper,
-        hardware_offsets=record_cfg.hardware_offsets,
-        joint_ids=record_cfg.joint_ids,
-        joint_offsets=record_cfg.joint_offsets,
-        joint_signs=record_cfg.joint_signs,
-        gripper_config=record_cfg.gripper_config,
-        control_mode=record_cfg.control_mode,       
-    )
+    if record_cfg.control_mode == "isoteleop":
+        teleop_config = FrankaTeleopConfig(
+            port=record_cfg.port,
+            use_gripper=record_cfg.use_gripper,
+            hardware_offsets=record_cfg.hardware_offsets,
+            joint_ids=record_cfg.joint_ids,
+            joint_offsets=record_cfg.joint_offsets,
+            joint_signs=record_cfg.joint_signs,
+            gripper_config=record_cfg.gripper_config,
+            control_mode=record_cfg.control_mode,       
+        )
+    elif record_cfg.control_mode == "spacemouse":
+        teleop_config = FrankaTeleopConfig(
+            use_gripper=record_cfg.use_gripper,
+            pose_scaler=record_cfg.pose_scaler,
+            control_mode=record_cfg.control_mode,       
+        )
     teleop = FrankaTeleop(teleop_config)
     teleop.connect()
     for i in range(2):

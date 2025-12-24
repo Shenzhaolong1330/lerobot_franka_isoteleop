@@ -4,12 +4,13 @@ setup(
     name="lerobot_teleoperator_franka",
     version="0.0.1",
     description="LeRobot teleoperator integration",
-    author="Chenyu Su",
-    author_email="suchenyu@mail.ustc.edu.cn",
+    author="Zhaolong Shen",
+    author_email="shenzhaolong@buaa.edu.cn",
     packages=find_packages(),
     python_requires=">=3.10",
     install_requires=[
-        "dynamixel_sdk"
+        "dynamixel_sdk",
+        "easyhid"
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

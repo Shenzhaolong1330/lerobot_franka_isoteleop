@@ -148,8 +148,8 @@ class FrankaInterfaceServer:
     def robot_update_desired_ee_pose(self, pose: list):
         pose = torch.Tensor(pose)
         self.robot.update_desired_ee_pose(
-            position=pose[:3],
-            orientation=st.Rotation.from_rotvec(pose[3:]).as_quat()
+            position=torch.Tensor(pose[:3]),
+            orientation=torch.Tensor(st.Rotation.from_rotvec(pose[3:]).as_quat())
         )
 
     def robot_terminate_current_policy(self):

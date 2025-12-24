@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.resolve()
 
 setup(
-    name="lerobot_franka_isoteleop",
+    name="lerobot_franka_teleop",
     version="0.1.0",
     description="Franka teleoperation and dataset collection utilities",
     python_requires=">=3.10",
