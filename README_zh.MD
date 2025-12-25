@@ -1,20 +1,33 @@
-# Franka 同构遥操作数据采集与回放指南
+# Franka 遥操作数据采集与回放指南
+
+## 简介
+本项目是用于 Franka Research 3 机器人（兼容 Franka Panda）的遥操作数据采集工具，嵌入在 [LeRobot](https://github.com/huggingface/lerobot.git) 框架中。
+
+它支持机器人的主从同构映射控制，并以 LeRobot 数据集格式收集遥操作数据。
+
 <p align="center">
   <img src="assets/robot.png" alt="Record" width="600">
   <br>
 </p>
 
-## 0. Franka control说明
+### 新功能支持
+
+现在我们支持使用 [SpaceMouse](https://3dconnexion.com/) 设备进行末端位姿控制。
+
+<p align="center">
+  <img src="assets/spacemouse.png" alt="Record" width="600">
+  <br>
+</p>
+
+SpaceMouse 是一个 6 轴输入设备，可用于控制机器人的末端位姿。左按钮用于打开夹爪，右按钮用于关闭夹爪。
+
+## 0. Franka 控制说明
 在这个版本中，使用[Polymetis](https://polymetis-docs.github.io/)对Franka 进行控制，由于Polymetis不支持python3.10，并且推荐单独在NUC上运行，因此在这里用Zerorpc进行远程通信实现，具体流程如下：
-### 1. 在NUC上安装[Polymetis](https://polymetis-docs.github.io/)
+### 0.1 在NUC上安装[Polymetis](https://polymetis-docs.github.io/)
 我们开源了针对franka优化后的[Polymetis](https://github.com/Shenzhaolong1330/fairo-franka/tree/main)源码，详细参考[安装教程](https://github.com/Shenzhaolong1330/fairo-franka/blob/main/polymetis/FRANKA.md)进行安装。
-### 2. 在NUC上启动Server
+### 0.2 在NUC上启动Server
 分别启动[robot interface](https://github.com/Shenzhaolong1330/fairo-franka/blob/main/polymetis/polymetis/python/scripts/launch_robot.py)，[gripper interface](https://github.com/Shenzhaolong1330/fairo-franka/blob/main/polymetis/polymetis/python/scripts/launch_gripper.py)和[interface server](https://github.com/Shenzhaolong1330/fairo-franka/blob/main/polymetis/polymetis/python/polymetis/franka_interface_server.py)
-```
-# On the NUC
-python launch_robot.py robot_client=franka_hardware
-python launch_gripper.py gripper=franka_hand
-python franka_interface_server.py
+
 ```
 <!-- ### 3. 在本地启动[interface client](lerobot_robot_franka\lerobot_robot_franka\franka_interface_client.py)
 在尝试链接Franka前，启动[interface client](lerobot_robot_franka\lerobot_robot_franka\franka_interface_client.py)
@@ -225,4 +238,3 @@ lerobot-edit-dataset
 5. 数据记录结束后，数据集同级目录会生成 `dataset_info.txt` 文件，用于保存本地数据集信息。如果手动删除过数据集，可通过以下命令更新记录信息：
 ```bash
 tools-check-dataset
-```

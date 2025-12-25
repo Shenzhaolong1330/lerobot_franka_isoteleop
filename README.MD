@@ -1,11 +1,16 @@
 # Franka Teleoperation Data Collection with Isomorphic Mapping and SpaceMouse
 
+## Introduction 
+This project is a teleoperation data collection tool for Franka Research 3 robot (should compatible with Franka Panda), embeded in [LeRobot](https://github.com/huggingface/lerobot.git).
+
+It supports the master-slave isomorphic mapping control of the robot, and collect the teleoperation data in LeRobot dataset format.
+
 <p align="center">
   <img src="assets/robot.png" alt="Record" width="600">
   <br>
 </p>
 
-## New Support
+### New Support
 
 Now we support the end pose control using [SpaceMouse](https://3dconnexion.com/) devices.
 
