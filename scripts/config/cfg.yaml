@@ -3,7 +3,7 @@ record:
   # repo_id: &repo_id "scylearning/pick_greencube_into_trashbin" 
   # Suggested format: <hf_username>/<description>, description = task.description -> Verb_SourceObject_prep_TargetObject
   # e.g. Pick up the green cube and put it into the trash bin -> pick_greencube_into_trashbin
-  debug: False # if True, robot will not execute any actions, but gripper can still be controlled
+  debug: 0 # if True, robot will not execute any actions, but gripper can still be controlled
   user_notes:  # any additional notes about the dataset
   fps: 15 # dataset and camera frame rate
   control_mode: &control_mode "spacemouse" # "isoteleop" or "spacemouse"
@@ -20,9 +20,10 @@ record:
       joint_signs: [1, 1, 1, 1, 1, -1, 1]
       gripper_config: [7, 0.9664079, 1.9404857] # id, min, max
     spacemouse_config:
-      joint_ids: [0, 1, 2, 3, 4, 5]
+      channel_ids: [0, 1, 2, 3, 4, 5]
+      channel_signs: [-1, -1, 1, -1, -1, 1]
       use_gripper: *use_gripper # whether the spacemouse robot can use gripper
-      pose_scaler: [0,01, 0.01] # scaler for spacemouse actions [position, attitude]
+      pose_scaler: [0.03, 0.1] # scaler for spacemouse actions [position, attitude]
       
   robot:
     # ip: &ip "172.16.0.2" # robot ip

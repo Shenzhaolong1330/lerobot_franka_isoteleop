@@ -235,17 +235,24 @@ class Franka(Robot):
         elif self.config.control_mode == "spacemouse":
             # print("using control mode: ", self.config.control_mode)
             delta_ee_pose = np.array([action[f"delta_ee_pose.{axis}"] for axis in ["x", "y", "z", "rx", "ry", "rz"]])
-            # delta_ee_pose = np.array([float(action[f"delta_ee_pose.{axis}"][0][0]) for axis in ["x", "y", "z", "rx", "ry", "rz"]])
-            # delta_ee_pose = delta_ee_pose.squeeze(1)
 
             if not self.config.debug:
+                
+                import scipy.spatial.transform as st
 
                 ee_pose = self._robot.robot_get_ee_pose()
-                # print("ee_pose:", ee_pose)
-                # print("delta_ee_pose:",delta_ee_pose)
-                target_ee_pose = ee_pose + delta_ee_pose
-                # print("target_ee_pose:", target_ee_pose)
-                self._robot.robot_update_desired_ee_pose(target_ee_pose)
+
+                if np.linalg.norm(delta_ee_pose) >= 0.01:
+                    target_position = ee_pose[:3] + delta_ee_pose[:3]
+                    current_rot = st.Rotation.from_rotvec(ee_pose[3:])
+                    delta_rot = st.Rotation.from_rotvec(delta_ee_pose[3:])
+                    target_rotation = delta_rot * current_rot  # 注意顺序：增量旋转 * 当前旋转
+                    target_rotvec = target_rotation.as_rotvec()
+                    target_ee_pose = np.concatenate([target_position, target_rotvec])
+                    # print("target_ee_pose:", target_ee_pose[3])
+                    self._robot.robot_update_desired_ee_pose(target_ee_pose)
+                else:
+                    pass
             
             if "gripper_cmd_bin" in action:
                 gripper_position = action["gripper_cmd_bin"]

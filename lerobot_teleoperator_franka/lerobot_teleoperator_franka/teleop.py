@@ -95,6 +95,7 @@ class FrankaTeleop(Teleoperator):
         self.spacemouse_robot = SpaceMouseRobot(
             use_gripper=self.cfg.use_gripper,
             pose_scaler=self.cfg.pose_scaler,
+            channel_signs=self.cfg.channel_signs,
             )
         actions = self.spacemouse_robot.get_action()
         formatted_actions = [round(float(j), 4) for j in actions]
@@ -152,6 +153,7 @@ if __name__ == "__main__":
                 # sm teleop config
                 self.use_gripper = sm_cfg["use_gripper"]  
                 self.pose_scaler = sm_cfg["pose_scaler"]
+                self.channel_signs = sm_cfg["channel_signs"]
                 self.control_mode = teleop.get("control_mode", "spacemouse")
     
     with open(Path(__file__).parent / "config" / "cfg.yaml", "r") as f:
@@ -173,7 +175,8 @@ if __name__ == "__main__":
         teleop_config = FrankaTeleopConfig(
             use_gripper=record_cfg.use_gripper,
             pose_scaler=record_cfg.pose_scaler,
-            control_mode=record_cfg.control_mode,       
+            channel_signs=record_cfg.channel_signs,
+            control_mode=record_cfg.control_mode,    
         )
     teleop = FrankaTeleop(teleop_config)
     teleop.connect()

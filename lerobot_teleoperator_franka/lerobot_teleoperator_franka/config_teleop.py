@@ -14,4 +14,5 @@ class FrankaTeleopConfig(TeleoperatorConfig):
     joint_signs: List[int] = field(default_factory=list)
     gripper_config: tuple[int, float, float] = None
     pose_scaler: List[float] = field(default_factory=lambda: [1.0, 1.0])
+    channel_signs: List[bool] = field(default_factory=lambda: [1, 1, 1, 1, 1, 1])
     control_mode: str = "isoteleop"

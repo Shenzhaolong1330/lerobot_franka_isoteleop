@@ -52,6 +52,7 @@ class RecordConfig:
         elif teleop["control_mode"] == "spacemouse":
             self.use_gripper = sm_cfg["use_gripper"]
             self.pose_scaler = sm_cfg["pose_scaler"]
+            self.channel_signs = sm_cfg["channel_signs"]
             self.control_mode = teleop.get("control_mode", "spacemouse")
 
         # robot config
@@ -156,6 +157,7 @@ def run_record(record_cfg: RecordConfig):
             teleop_config = FrankaTeleopConfig(
                 use_gripper=record_cfg.use_gripper,
                 pose_scaler=record_cfg.pose_scaler,
+                channel_signs=record_cfg.channel_signs,
                 control_mode=record_cfg.control_mode,       
             )
         
