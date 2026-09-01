@@ -1,6 +1,6 @@
 import pyrealsense2 as rs
 
-# List the connected Intel RealSense cameras and print their serial numbers.
+
 def list_realsense_devices():
     ctx = rs.context()
     devices = ctx.devices
@@ -14,6 +14,3 @@ def list_realsense_devices():
         serial = dev.get_info(rs.camera_info.serial_number)
         name = dev.get_info(rs.camera_info.name)
         print(f"Device {i}: Name={name}, Serial={serial}")
-
-def main():
-    list_realsense_devices()

@@ -1,281 +1,386 @@
-import yaml
+import logging
+import sys
+import termios
+import time as time_module
 from pathlib import Path
-from typing import Dict, Any
-from scripts.utils.dataset_utils import generate_dataset_name, update_dataset_info
-from lerobot_robot_franka import FrankaConfig, Franka
-from lerobot_teleoperator_franka import (
-    DynamixelTeleopConfig,
-    SpacemouseTeleopConfig,
-    OculusTeleopConfig,
-    create_teleop,
-    create_teleop_config,
-)
-from lerobot.cameras.configs import ColorMode, Cv2Rotation
-from lerobot.cameras.realsense.camera_realsense import RealSenseCameraConfig
-from lerobot.scripts.lerobot_record import record_loop
-from lerobot.processor import make_default_processors
-from lerobot.utils.visualization_utils import init_rerun
-from lerobot.utils.control_utils import init_keyboard_listener
+from typing import Any
+
+import yaml
 from send2trash import send2trash
-import termios, sys
-from lerobot.utils.constants import HF_LEROBOT_HOME
-from scripts.utils.teleop_joint_offsets import get_start_joints, compute_joint_offsets
+
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.datasets.utils import hw_to_dataset_features
-from lerobot.utils.control_utils import sanity_check_dataset_robot_compatibility
-from lerobot.configs.policies import PreTrainedConfig
-from lerobot.policies.factory import make_policy, make_pre_post_processors
-from lerobot.processor.rename_processor import rename_stats
-from dataclasses import field
-
-import logging
+from lerobot.processor import make_default_processors
+from lerobot.utils.constants import HF_LEROBOT_HOME
+from lerobot.utils.control_utils import (
+    init_keyboard_listener,
+    sanity_check_dataset_robot_compatibility,
+)
+from lerobot.utils.visualization_utils import init_rerun
+from lerobot_robot_franka import Franka, FrankaConfig
+from lerobot_teleoperator_franka import FrankaTeleop, FrankaTeleopConfig
+from scripts.core.record_loop import record_loop
+from scripts.utils.dataset_utils import generate_dataset_name, update_dataset_info
+from scripts.utils.gripper_config import franka_gripper_kwargs
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
 class RecordConfig:
-    """Configuration class for recording sessions."""
-    
-    def __init__(self, cfg: Dict[str, Any]):
+    def __init__(self, cfg: dict[str, Any]):
         storage = cfg["storage"]
         task = cfg["task"]
-        time = cfg["time"]
-        cam = cfg["cameras"]
+        timing = cfg["time"]
+        camera = cfg.get("cameras", {})
         robot = cfg["robot"]
-        policy = cfg["policy"]
-        teleop = cfg["teleop"]
-        
-        # Global config
+        teleop = cfg.get("teleop", {})
+        impedance = robot.get("cartesian_impedance", {})
+
         self.repo_id: str = cfg["repo_id"]
-        self.debug: bool = cfg.get("debug", True)
-        self.fps: str = cfg.get("fps", 15)
-        self.dataset_path: str = HF_LEROBOT_HOME / self.repo_id
-        self.user_info: str = cfg.get("user_notes", None)
-        self.run_mode: str = cfg.get("run_mode", "run_record")
-        self.rename_map: dict[str, str] = field(default_factory=dict)
-        
-        # Teleop config - parse based on control mode
-        self.control_mode = teleop.get("control_mode", "isoteleop")
-        self._parse_teleop_config(teleop)
-        
-        # Policy config
-        self._parse_policy_config(policy)
-        
-        # Robot config
-        self.robot_ip: str = robot["ip"]
-        self.use_gripper: bool = robot["use_gripper"]
-        self.close_threshold = robot["close_threshold"]
-        self.gripper_reverse: bool = robot["gripper_reverse"]
-        self.gripper_bin_threshold: float = robot["gripper_bin_threshold"]
-        self.gripper_max_open: float = robot.get("gripper_max_open", 0.08)
-        self.execute_mode: str = robot.get("execute_mode", "ee_pose")  # "ee_pose" or "joint"
-        
-        # Task config
+        self.fps: int = cfg.get("fps", 15)
+        self.dataset_path = HF_LEROBOT_HOME / self.repo_id
+        self.user_info: str | None = cfg.get("user_notes")
+
+        self.server_host: str = robot.get("server_host", "127.0.0.1")
+        self.server_port: int = robot.get("server_port", 4242)
+        self.gripper = franka_gripper_kwargs(robot)
+        self.reference_frame: str = robot.get("reference_frame", "base")
+        self.translation_axis_deadband: float = impedance.get(
+            "translation_axis_deadband", 0.0005
+        )
+        self.rotation_axis_deadband: float = impedance.get(
+            "rotation_axis_deadband", 0.0005
+        )
+        self.select_vector: list = impedance.get(
+            "select_vector", [1, 1, 1, 1, 1, 1]
+        )
+        self.cartesian_stiffness: list = impedance.get(
+            "stiffness", [750, 750, 750, 250, 250, 250]
+        )
+        self.cartesian_damping: list = impedance.get(
+            "damping", [37, 37, 37, 9, 9, 9]
+        )
+        self.init_pose: list[float] = robot["init_pose"]
+        self.init_pose_range: list[float] = robot.get(
+            "init_pose_range", [0, 0, 0, 0, 0, 0]
+        )
+        self.reset_time_to_go: float = robot.get("reset_time_to_go", 5.0)
+        self.max_translation_step: float = robot.get("max_translation_step", 0.05)
+        self.max_rotation_step: float = robot.get("max_rotation_step", 0.2)
+
+        self.teleop_step_size: float = teleop.get("step_size", 0.006)
+        self.teleop_rot_step_size: float = teleop.get("rot_step_size", 0.02)
+        self.teleop_alternate_step_size: float | None = teleop.get("fine_step_size")
+        self.teleop_alternate_rot_step_size: float | None = teleop.get(
+            "fine_rot_step_size"
+        )
+        self.control_frame_euler_deg: list = teleop.get(
+            "control_frame_euler_deg", [0.0, 0.0, 0.0]
+        )
+
         self.num_episodes: int = task.get("num_episodes", 1)
         self.display: bool = task.get("display", True)
         self.task_description: str = task.get("description", "default task")
         self.resume: bool = task.get("resume", False)
-        self.resume_dataset: str = task.get("resume_dataset", "")
-        
-        # Time config
-        self.episode_time_sec: int = time.get("episode_time_sec", 60)
-        self.reset_time_sec: int = time.get("reset_time_sec", 10)
-        self.save_mera_period: int = time.get("save_mera_period", 1)
-        
-        # Cameras config
-        self.wrist_cam_serial: str = cam["wrist_cam_serial"]
-        self.exterior_cam_serial: str = cam["exterior_cam_serial"]
-        self.width: int = cam["width"]
-        self.height: int = cam["height"]
-        
-        # Storage config
+        self.resume_dataset: str = task.get("resume_dataset", self.repo_id)
+
+        self.episode_time_sec: int = timing.get("episode_time_sec", 60)
+        self.reset_time_sec: int = timing.get("reset_time_sec", 60)
+        self.save_meta_period: int = timing.get("save_meta_period", 1)
+
+        camera_enabled = camera.get("enabled", True)
+        if not isinstance(camera_enabled, bool):
+            raise ValueError("cameras.enabled must be true or false.")
+        self.cameras_enabled: bool = camera_enabled
+        self.wrist_cam_serial: str | None = camera.get("wrist_cam_serial")
+        self.exterior_cam_serial: str | None = camera.get("exterior_cam_serial")
+        self.width: int = camera.get("width", 640)
+        self.height: int = camera.get("height", 480)
+        self.dummy_value: int = camera.get("dummy_value", 0)
         self.push_to_hub: bool = storage.get("push_to_hub", False)
-    
-    def _parse_teleop_config(self, teleop: Dict[str, Any]) -> None:
-        """Parse teleoperation configuration based on control mode."""
-        if self.control_mode == "isoteleop":
-            dxl_cfg = teleop["dynamixel_config"]
-            self.port = dxl_cfg["port"]
-            self.use_gripper = dxl_cfg["use_gripper"]
-            self.joint_ids = dxl_cfg["joint_ids"]
-            self.joint_offsets = dxl_cfg["joint_offsets"]
-            self.joint_signs = dxl_cfg["joint_signs"]
-            self.gripper_config = dxl_cfg["gripper_config"]
-            self.hardware_offsets = dxl_cfg["hardware_offsets"]
-        
-        elif self.control_mode == "spacemouse":
-            sm_cfg = teleop["spacemouse_config"]
-            self.use_gripper = sm_cfg["use_gripper"]
-            self.pose_scaler = sm_cfg["pose_scaler"]
-            self.channel_signs = sm_cfg["channel_signs"]
-        
-        elif self.control_mode == "oculus":
-            oculus_cfg = teleop.get("oculus_config", {})
-            self.use_gripper = oculus_cfg.get("use_gripper", True)
-            self.oculus_ip = oculus_cfg.get("ip", "192.168.110.62")
-            self.pose_scaler = oculus_cfg.get("pose_scaler", [1.0, 1.0])
-            self.channel_signs = oculus_cfg.get("channel_signs", [1, 1, 1, 1, 1, 1])
-            # Placo IK settings (now read from placo section)
-            placo_cfg = teleop.get("placo", {})
-            self.oculus_robot_ip = placo_cfg.get("robot_ip", "192.168.110.15")
-            self.oculus_robot_port = placo_cfg.get("robot_port", 4242)
-            urdf_path = placo_cfg.get("ik_urdf_path", "")
-            # Resolve relative urdf_path to project root (lerobot_franka_isoteleop/)
-            if urdf_path and not Path(urdf_path).is_absolute():
-                project_root = Path(__file__).resolve().parent.parent.parent  # scripts/core/ -> scripts/ -> project root
-                urdf_path = str((project_root / urdf_path).resolve())
-            self.oculus_urdf_path = urdf_path
-            self.oculus_enable_ik = placo_cfg.get("enable_ik", True)
-            self.oculus_ik_iterations = placo_cfg.get("ik_iterations", 3)
-            self.oculus_ik_pos_weight = placo_cfg.get("ik_pos_weight", 8.0)
-            self.oculus_ik_ori_weight = placo_cfg.get("ik_ori_weight", 0.5)
-            self.oculus_ik_joints_weight = placo_cfg.get("ik_joints_weight", 0.2)
-            self.oculus_ik_regularization = placo_cfg.get("ik_regularization", 1e-4)
-        
-        else:
-            raise ValueError(f"Unsupported control mode: {self.control_mode}")
-    
-    def _parse_policy_config(self, policy: Dict[str, Any]) -> None:
-        """Parse policy configuration."""
-        policy_type = policy["type"]
-        if policy_type == "act":
-            from lerobot.policies import ACTConfig
-            self.policy = ACTConfig(
-                device=policy["device"],
-                push_to_hub=policy["push_to_hub"],
-            )
-        elif policy_type == "diffusion":
-            from lerobot.policies import DiffusionConfig
-            self.policy = DiffusionConfig(
-                device=policy["device"],
-                push_to_hub=policy["push_to_hub"],
-            )
-        else:
-            raise ValueError(f"No config for policy type: {policy_type}")
-        
-        if policy.get("pretrained_path"):
-            self.policy.pretrained_path = policy["pretrained_path"]
-    
-    def create_teleop_config(self):
-        """Create teleoperation configuration object."""
-        if self.control_mode == "isoteleop":
-            return DynamixelTeleopConfig(
-                port=self.port,
-                use_gripper=self.use_gripper,
-                hardware_offsets=self.hardware_offsets,
-                joint_ids=self.joint_ids,
-                joint_offsets=self.joint_offsets,
-                joint_signs=self.joint_signs,
-                gripper_config=self.gripper_config,
-            )
-        elif self.control_mode == "spacemouse":
-            return SpacemouseTeleopConfig(
-                use_gripper=self.use_gripper,
-                pose_scaler=self.pose_scaler,
-                channel_signs=self.channel_signs,
-            )
-        elif self.control_mode == "oculus":
-            return OculusTeleopConfig(
-                use_gripper=self.use_gripper,
-                ip=self.oculus_ip,
-                pose_scaler=self.pose_scaler,
-                channel_signs=self.channel_signs,
-                enable_ik=self.oculus_enable_ik,
-                robot_ip=self.oculus_robot_ip,
-                robot_port=self.oculus_robot_port,
-                urdf_path=self.oculus_urdf_path,
-                ik_iterations=self.oculus_ik_iterations,
-                ik_pos_weight=self.oculus_ik_pos_weight,
-                ik_ori_weight=self.oculus_ik_ori_weight,
-                ik_joints_weight=self.oculus_ik_joints_weight,
-                ik_regularization=self.oculus_ik_regularization,
-            )
-        else:
-            raise ValueError(f"Unsupported control mode: {self.control_mode}")
 
 
-def check_joint_offsets(record_cfg: RecordConfig):
-    """Check the joint_offsets is set and correct."""
+def make_camera_configs(record_cfg: RecordConfig) -> dict:
+    camera_names = ("wrist_image", "exterior_image")
+    if not record_cfg.cameras_enabled:
+        from lerobot_robot_franka import DummyCameraConfig
 
-    if record_cfg.joint_offsets is None:
-        raise ValueError("joint_offsets is None. Please check teleop_joint_offsets.py output.")
-
-    start_joints = get_start_joints(record_cfg)
-    if start_joints is None:
-        raise RuntimeError("Failed to retrieve start joints from Franka robot.")
-
-    joint_offsets = compute_joint_offsets(record_cfg, start_joints)
-
-    if joint_offsets != record_cfg.joint_offsets:
-        raise ValueError(
-            f"Computed joint_offsets {joint_offsets} != provided joint_offsets {record_cfg.joint_offsets}. "
-            "Please check teleop_joint_offsets.py output."
+        logging.info(
+            "====== [CAM] RealSense disabled; using dummy frames for %s ======",
+            ", ".join(camera_names),
         )
-    logging.info("Joint offsets verified successfully.")
+        return {
+            name: DummyCameraConfig(
+                fps=record_cfg.fps,
+                width=record_cfg.width,
+                height=record_cfg.height,
+                value=record_cfg.dummy_value,
+            )
+            for name in camera_names
+        }
 
-def handle_incomplete_dataset(dataset_path):
+    if not record_cfg.wrist_cam_serial or not record_cfg.exterior_cam_serial:
+        raise ValueError(
+            "Both camera serial numbers are required when cameras.enabled is true."
+        )
+
+    # Import RealSense only when real cameras are enabled.
+    from lerobot.cameras.configs import ColorMode, Cv2Rotation
+    from lerobot.cameras.realsense.camera_realsense import RealSenseCameraConfig
+
+    return {
+        "wrist_image": RealSenseCameraConfig(
+            serial_number_or_name=record_cfg.wrist_cam_serial,
+            fps=record_cfg.fps,
+            width=record_cfg.width,
+            height=record_cfg.height,
+            color_mode=ColorMode.RGB,
+            use_depth=False,
+            rotation=Cv2Rotation.NO_ROTATION,
+        ),
+        "exterior_image": RealSenseCameraConfig(
+            serial_number_or_name=record_cfg.exterior_cam_serial,
+            fps=record_cfg.fps,
+            width=record_cfg.width,
+            height=record_cfg.height,
+            color_mode=ColorMode.RGB,
+            use_depth=False,
+            rotation=Cv2Rotation.NO_ROTATION,
+        ),
+    }
+
+
+def handle_incomplete_dataset(dataset_path: Path) -> bool:
     if dataset_path.exists():
-        print(f"====== [WARNING] Detected an incomplete dataset folder: {dataset_path} ======")
+        print(
+            "====== [WARNING] Detected an incomplete dataset folder: "
+            f"{dataset_path} ======"
+        )
         termios.tcflush(sys.stdin, termios.TCIFLUSH)
         ans = input("Do you want to delete it? (y/n): ").strip().lower()
         if ans == "y":
-            print(f"====== [DELETE] Removing folder: {dataset_path} ======")
-            # Send to trash
-            send2trash(dataset_path)
-            print("====== [DONE] Incomplete dataset folder deleted successfully. ======")
-        else:
-            print("====== [KEEP] Incomplete dataset folder retained, please check manually. ======")
+            print(f"====== [TRASH] Moving folder to trash: {dataset_path} ======")
+            send2trash(str(dataset_path))
+            print(
+                "====== [DONE] Incomplete dataset folder moved to trash "
+                "successfully. ======"
+            )
+            return False
+        print(
+            "====== [KEEP] Incomplete dataset folder retained; "
+            "please check manually. ======"
+        )
+        return True
+    return False
 
-def run_record(record_cfg: RecordConfig):
-    print("====== [START] Starting recording ======")
+
+def format_duration(seconds: float) -> str:
+    total_seconds = max(0, int(round(seconds)))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes}m {seconds}s"
+    if minutes:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
+
+
+def recording_time_info(
+    record_start_time: float,
+    record_loop_time_s: float,
+    record_loop_count: int,
+) -> dict[str, str]:
+    total_time_s = time_module.perf_counter() - record_start_time
+    reset_time_s = max(0.0, total_time_s - record_loop_time_s)
+    denominator = max(record_loop_count, 1)
+    return {
+        "record_time": format_duration(record_loop_time_s),
+        "reset_time": format_duration(reset_time_s),
+        "total_time": format_duration(total_time_s),
+        "avg_record_time": format_duration(record_loop_time_s / denominator),
+        "avg_reset_time": format_duration(reset_time_s / denominator),
+    }
+
+
+def log_record_times(timing: dict[str, str]) -> None:
+    labels = {
+        "record_time": "Record loop time",
+        "reset_time": "Reset/non-record time",
+        "total_time": "Total recording time",
+        "avg_record_time": "Average record loop time",
+        "avg_reset_time": "Average reset/non-record time",
+    }
+    for key, label in labels.items():
+        logging.info("====== [INFO] %s: %s ======", label, timing[key])
+
+
+def append_record_times(record_cfg: RecordConfig, timing: dict[str, str]) -> None:
+    duration_info = (
+        f"record_time={timing['record_time']}, reset_time={timing['reset_time']}, "
+        f"total_time={timing['total_time']}, "
+        f"avg_record_time={timing['avg_record_time']}, "
+        f"avg_reset_time={timing['avg_reset_time']}"
+    )
+    if record_cfg.user_info:
+        if duration_info not in str(record_cfg.user_info):
+            record_cfg.user_info = f"{record_cfg.user_info}; {duration_info}"
+    else:
+        record_cfg.user_info = duration_info
+
+
+def get_episode_buffer_size(dataset: LeRobotDataset | None) -> int:
+    if dataset is None:
+        return 0
+    episode_buffer = getattr(dataset, "episode_buffer", None)
+    if not episode_buffer:
+        return 0
+    return int(episode_buffer.get("size", 0))
+
+
+def discard_unsaved_episode(dataset: LeRobotDataset | None) -> None:
+    if dataset is None:
+        return
+
+    if get_episode_buffer_size(dataset) <= 0:
+        return
+
+    try:
+        dataset.clear_episode_buffer(delete_images=len(dataset.meta.image_keys) > 0)
+        logging.info("====== [INFO] Discarded unsaved episode buffer. ======")
+    except Exception as cleanup_error:
+        logging.info(
+            "====== [WARNING] Failed to discard unsaved episode buffer: %s ======",
+            cleanup_error,
+        )
+
+
+def finalize_dataset_safely(dataset: LeRobotDataset | None) -> None:
+    if dataset is None:
+        return
+
+    try:
+        dataset.finalize()
+    except Exception as finalize_error:
+        logging.info(
+            "====== [WARNING] Failed to finalize dataset cleanly: %s ======",
+            finalize_error,
+        )
+
+
+def disconnect_safely(robot: Franka | None, teleop: FrankaTeleop | None) -> None:
+    for name, device in (("Robot", robot), ("Keyboard", teleop)):
+        if device is None or not device.is_connected:
+            continue
+        try:
+            device.disconnect()
+        except Exception as error:
+            logging.warning(
+                "====== [WARNING] %s cleanup failed: %s ======",
+                name,
+                error,
+            )
+
+
+def wait_for_enter(prompt: str) -> None:
+    while True:
+        termios.tcflush(sys.stdin, termios.TCIFLUSH)
+        user_input = input(prompt)
+        if user_input == "":
+            return
+        logging.info("====== [WARNING] Please press only Enter to continue ======")
+
+
+def reset_to_init_pose(
+    record_cfg: RecordConfig,
+    robot: Franka,
+    teleop: FrankaTeleop,
+    events: dict,
+    teleop_action_processor,
+    robot_action_processor,
+    robot_observation_processor,
+) -> None:
+    logging.info(
+        "====== [RESET] Use the keyboard to move to a safe pre-reset pose ======"
+    )
+    logging.info(
+        "\033[32m====== [RESET] Press Right Arrow to finish manual reset ======\033[0m"
+    )
+    record_loop(
+        robot=robot,
+        events=events,
+        fps=record_cfg.fps,
+        teleop=teleop,
+        teleop_action_processor=teleop_action_processor,
+        robot_action_processor=robot_action_processor,
+        robot_observation_processor=robot_observation_processor,
+        control_time_s=record_cfg.reset_time_sec,
+        single_task=record_cfg.task_description,
+        display_data=record_cfg.display,
+    )
+
+    events["exit_early"] = False
+    events["rerecord_episode"] = False
+    if events["stop_recording"]:
+        return
+
+    logging.info("====== [RESET] Moving to the configured initial EE pose ======")
+    robot.reset_to_init_pose(record_cfg.init_pose, record_cfg.init_pose_range)
+
+
+def run_record(record_cfg: RecordConfig) -> None:
+    robot = None
+    teleop = None
+    dataset = None
+    dataset_name = None
+    data_version = None
+    record_start_time = None
+    record_loop_time_s = 0.0
+    record_loop_count = 0
+    dataset_info_updated = False
+
     try:
         dataset_name, data_version = generate_dataset_name(record_cfg)
 
-        # Check joint offsets
-        # if not record_cfg.debug:
-        #     check_joint_offsets(record_cfg)        
-        
-        # Create RealSenseCamera configurations
-        wrist_image_cfg = RealSenseCameraConfig(serial_number_or_name=record_cfg.wrist_cam_serial,
-                                        fps=record_cfg.fps,
-                                        width=record_cfg.width,
-                                        height=record_cfg.height,
-                                        color_mode=ColorMode.RGB,
-                                        use_depth=False,
-                                        rotation=Cv2Rotation.NO_ROTATION)
-
-        exterior_image_cfg = RealSenseCameraConfig(serial_number_or_name=record_cfg.exterior_cam_serial,
-                                        fps=record_cfg.fps,
-                                        width=record_cfg.width,
-                                        height=record_cfg.height,
-                                        color_mode=ColorMode.RGB,
-                                        use_depth=False,
-                                        rotation=Cv2Rotation.NO_ROTATION)
-
-        # Create the robot and teleoperator configurations
-        camera_config = {"wrist_image": wrist_image_cfg, "exterior_image": exterior_image_cfg}
-        
-        # Create teleop config using the new method
-        teleop_config = record_cfg.create_teleop_config()
-        
-        robot_config = FrankaConfig(
-            robot_ip=record_cfg.robot_ip,
-            cameras = camera_config,
-            debug = record_cfg.debug,
-            close_threshold = record_cfg.close_threshold,
-            use_gripper = record_cfg.use_gripper,
-            gripper_reverse = record_cfg.gripper_reverse,
-            gripper_bin_threshold = record_cfg.gripper_bin_threshold,
-            gripper_max_open = record_cfg.gripper_max_open,
-            control_mode = record_cfg.control_mode,
-            execute_mode = record_cfg.execute_mode,
+        camera_config = make_camera_configs(record_cfg)
+        teleop_config = FrankaTeleopConfig(
+            use_gripper=record_cfg.gripper["use_gripper"],
+            init_gripper=record_cfg.gripper["init_gripper"],
+            step_size=record_cfg.teleop_step_size,
+            rot_step_size=record_cfg.teleop_rot_step_size,
+            alternate_step_size=record_cfg.teleop_alternate_step_size,
+            alternate_rot_step_size=record_cfg.teleop_alternate_rot_step_size,
+            reference_frame=record_cfg.reference_frame,
+            control_frame_euler_deg=record_cfg.control_frame_euler_deg,
+            select_vector=record_cfg.select_vector,
         )
-        # Initialize the robot
+        robot_config = FrankaConfig(
+            server_host=record_cfg.server_host,
+            server_port=record_cfg.server_port,
+            cameras=camera_config,
+            **record_cfg.gripper,
+            reference_frame=record_cfg.reference_frame,
+            translation_axis_deadband=record_cfg.translation_axis_deadband,
+            rotation_axis_deadband=record_cfg.rotation_axis_deadband,
+            select_vector=record_cfg.select_vector,
+            control_frame_euler_deg=record_cfg.control_frame_euler_deg,
+            cartesian_stiffness=record_cfg.cartesian_stiffness,
+            cartesian_damping=record_cfg.cartesian_damping,
+            init_pose=record_cfg.init_pose,
+            init_pose_range=record_cfg.init_pose_range,
+            reset_time_to_go=record_cfg.reset_time_to_go,
+            max_translation_step=record_cfg.max_translation_step,
+            max_rotation_step=record_cfg.max_rotation_step,
+        )
         robot = Franka(robot_config)
+        teleop = FrankaTeleop(teleop_config)
+        teleop.set_robot(robot)
 
-        # Configure the dataset features
         action_features = hw_to_dataset_features(robot.action_features, "action")
-        obs_features = hw_to_dataset_features(robot.observation_features, "observation", use_video=True)
+        obs_features = hw_to_dataset_features(
+            robot.observation_features,
+            "observation",
+            use_video=True,
+        )
         dataset_features = {**action_features, **obs_features}
 
         if record_cfg.resume:
@@ -285,9 +390,13 @@ def run_record(record_cfg: RecordConfig):
 
             if hasattr(robot, "cameras") and len(robot.cameras) > 0:
                 dataset.start_image_writer()
-            sanity_check_dataset_robot_compatibility(dataset, robot, record_cfg.fps, dataset_features)
+            sanity_check_dataset_robot_compatibility(
+                dataset,
+                robot,
+                record_cfg.fps,
+                dataset_features,
+            )
         else:
-            # # Create the dataset
             dataset = LeRobotDataset.create(
                 repo_id=dataset_name,
                 fps=record_cfg.fps,
@@ -296,88 +405,36 @@ def run_record(record_cfg: RecordConfig):
                 use_videos=True,
                 image_writer_threads=4,
             )
-        # Set the episode metadata buffer size to 1, so that each episode is saved immediately
-        dataset.meta.metadata_buffer_size = record_cfg.save_mera_period
 
-        # Initialize the keyboard listener and rerun visualization
+        dataset.meta.metadata_buffer_size = record_cfg.save_meta_period
+
         _, events = init_keyboard_listener()
         init_rerun(session_name="recording")
 
-        # Create processor
-        teleop_action_processor, robot_action_processor, robot_observation_processor = make_default_processors()
-        preprocessor = None
-        postprocessor = None
-
-        # configure the teleop and policy
-        if record_cfg.run_mode == "run_record":
-            logging.info("====== [INFO] Running in teleoperation mode ======")
-            teleop = create_teleop(teleop_config)
-            policy = None
-        elif record_cfg.run_mode == "run_policy":
-            logging.info("====== [INFO] Running in policy mode ======")
-            policy = make_policy(record_cfg.policy, ds_meta=dataset.meta)
-            teleop = None
-        elif record_cfg.run_mode == "run_mix":
-            logging.info("====== [INFO] Running in mixed mode ======")
-            policy = make_policy(record_cfg.policy, ds_meta=dataset.meta)
-            teleop = create_teleop(teleop_config)
-        
-        if policy is not None:
-            preprocessor, postprocessor = make_pre_post_processors(
-                policy_cfg=record_cfg.policy,
-                pretrained_path=record_cfg.policy.pretrained_path,
-                dataset_stats=rename_stats(dataset.meta.stats, {}),  # 使用空字典作为rename_map
-                preprocessor_overrides={
-                    "device_processor": {"device": record_cfg.policy.device},
-                    "rename_observations_processor": {"rename_map": {}},  # 使用空字典作为rename_map
-                },
-            )
+        (
+            teleop_action_processor,
+            robot_action_processor,
+            robot_observation_processor,
+        ) = make_default_processors()
 
         robot.connect()
-        if teleop is not None:
-            teleop.connect()
+        robot.reset_to_init_pose(record_cfg.init_pose, record_cfg.init_pose_range)
+        teleop.connect()
 
         episode_idx = 0
-
+        record_start_time = time_module.perf_counter()
         while episode_idx < record_cfg.num_episodes and not events["stop_recording"]:
-            logging.info(f"====== [RECORD] Recording episode {episode_idx + 1} of {record_cfg.num_episodes} ======")
-            record_loop(
-                robot=robot,
-                events=events,
-                fps=record_cfg.fps,
-                teleop=teleop,
-                policy=policy,
-                preprocessor=preprocessor,
-                postprocessor=postprocessor,
-                teleop_action_processor=teleop_action_processor,
-                robot_action_processor=robot_action_processor,
-                robot_observation_processor=robot_observation_processor,
-                dataset=dataset,
-                control_time_s=record_cfg.episode_time_sec,
-                single_task=record_cfg.task_description,
-                display_data=record_cfg.display,
+            events["exit_early"] = False
+            events["rerecord_episode"] = False
+            teleop.reset_step_size()
+            robot.set_episode_reference_pose()
+            logging.info(
+                "====== [RECORD] Recording episode %d of %d ======",
+                episode_idx + 1,
+                record_cfg.num_episodes,
             )
-
-            if events["rerecord_episode"]:
-                logging.info("Re-recording episode")
-                events["rerecord_episode"] = False
-                events["exit_early"] = False
-                dataset.clear_episode_buffer()
-                continue
-
-            dataset.save_episode()
-
-            # Reset the environment if not stopping or re-recording
-            if not events["stop_recording"] and (episode_idx < record_cfg.num_episodes - 1 or events["rerecord_episode"]):
-                while True:
-                    termios.tcflush(sys.stdin, termios.TCIFLUSH)
-                    user_input = input("====== [WAIT] Press Enter to reset the environment ======")
-                    if user_input == "":
-                        break  
-                    else:
-                        logging.info("====== [WARNING] Please press only Enter to continue ======")
-
-                logging.info("====== [RESET] Resetting the environment ======")
+            episode_record_start = time_module.perf_counter()
+            try:
                 record_loop(
                     robot=robot,
                     events=events,
@@ -386,45 +443,127 @@ def run_record(record_cfg: RecordConfig):
                     teleop_action_processor=teleop_action_processor,
                     robot_action_processor=robot_action_processor,
                     robot_observation_processor=robot_observation_processor,
-                    control_time_s=record_cfg.reset_time_sec,
+                    dataset=dataset,
+                    control_time_s=record_cfg.episode_time_sec,
                     single_task=record_cfg.task_description,
                     display_data=record_cfg.display,
                 )
+            finally:
+                record_loop_time_s += time_module.perf_counter() - episode_record_start
+                record_loop_count += 1
+
+            if events["rerecord_episode"]:
+                logging.info("Re-recording episode")
+                events["rerecord_episode"] = False
+                events["exit_early"] = False
+                dataset.clear_episode_buffer()
+                reset_to_init_pose(
+                    record_cfg,
+                    robot,
+                    teleop,
+                    events,
+                    teleop_action_processor,
+                    robot_action_processor,
+                    robot_observation_processor,
+                )
+                continue
+            robot.stop_control()
+
+            if get_episode_buffer_size(dataset) <= 0:
+                logging.info(
+                    "====== [WARNING] No frames recorded; skipping episode. ======"
+                )
+                events["exit_early"] = False
+                events["rerecord_episode"] = False
+                if events["stop_recording"]:
+                    break
+                continue
+
+            dataset.save_episode()
+
+            has_next_episode = episode_idx < record_cfg.num_episodes - 1
+            if not events["stop_recording"] and has_next_episode:
+                wait_for_enter("====== [WAIT] Press Enter to reset the robot ======")
+                reset_to_init_pose(
+                    record_cfg,
+                    robot,
+                    teleop,
+                    events,
+                    teleop_action_processor,
+                    robot_action_processor,
+                    robot_observation_processor,
+                )
+                if not events["stop_recording"]:
+                    wait_for_enter(
+                        "====== [WAIT] Press Enter to start the next episode ======"
+                    )
 
             episode_idx += 1
 
-        # Clean up
         logging.info("Stop recording")
-        robot.disconnect()
-        if teleop is not None:
-            teleop.disconnect()
+        disconnect_safely(robot, teleop)
         dataset.finalize()
 
+        timing = recording_time_info(
+            record_start_time, record_loop_time_s, record_loop_count
+        )
+        log_record_times(timing)
+        append_record_times(record_cfg, timing)
         update_dataset_info(record_cfg, dataset_name, data_version)
+        dataset_info_updated = True
         if record_cfg.push_to_hub:
             dataset.push_to_hub()
 
-    except Exception as e:
-        logging.info(f"====== [ERROR] {e} ======")
-        dataset_path = Path(HF_LEROBOT_HOME) / dataset_name
-        handle_incomplete_dataset(dataset_path)
-        sys.exit(1)
+    except (Exception, KeyboardInterrupt) as error:
+        message = (
+            f"====== [ERROR] {error} ======"
+            if isinstance(error, Exception)
+            else "\n====== [INFO] Ctrl+C detected ======"
+        )
+        logging.info(message)
+        if record_start_time is not None:
+            timing = recording_time_info(
+                record_start_time, record_loop_time_s, record_loop_count
+            )
+            log_record_times(timing)
+            append_record_times(record_cfg, timing)
+        disconnect_safely(robot, teleop)
+        discard_unsaved_episode(dataset)
+        finalize_dataset_safely(dataset)
+        if dataset_name is not None and record_cfg.resume:
+            logging.info(
+                "====== [INFO] Existing resume dataset was kept. ======"
+            )
+            if (
+                record_start_time is not None
+                and data_version is not None
+                and not dataset_info_updated
+            ):
+                update_dataset_info(record_cfg, dataset_name, data_version)
+        elif dataset_name is not None and dataset_info_updated:
+            logging.info(
+                "====== [INFO] Complete local dataset was kept. ======"
+            )
+        elif dataset_name is not None:
+            dataset_path = Path(HF_LEROBOT_HOME) / dataset_name
+            keep_dataset = handle_incomplete_dataset(dataset_path)
+            if (
+                keep_dataset
+                and data_version is not None
+                and not dataset_info_updated
+            ):
+                update_dataset_info(record_cfg, dataset_name, data_version)
+        raise SystemExit(1) from error
 
-    except KeyboardInterrupt:
-        logging.info("\n====== [INFO] Ctrl+C detected, cleaning up incomplete dataset... ======")
-        dataset_path = Path(HF_LEROBOT_HOME) / dataset_name
-        handle_incomplete_dataset(dataset_path)
-        sys.exit(1)
 
-
-def main():
-    parent_path = Path(__file__).resolve().parent
-    cfg_path = parent_path.parent / "config" / "record_cfg.yaml"
-    with open(cfg_path, 'r') as f:
-        cfg = yaml.safe_load(f)
+def main() -> None:
+    config_path = Path(__file__).parents[1] / "config" / "cfg.yaml"
+    with config_path.open("r", encoding="utf-8") as file:
+        cfg = yaml.safe_load(file)
 
     record_cfg = RecordConfig(cfg["record"])
     run_record(record_cfg)
+
 
 if __name__ == "__main__":
     main()

@@ -1,85 +1,45 @@
-import re
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+import re
+
 
 def generate_dataset_name(cfg):
-    """
-    Generate dataset name: [description]_[YYYYMMDD]_[vXX]
-    Determine next version based on existing folders in the dataset root parent.
-    Return (dataset_name, version_str).
-    """
+    """Return the next dated dataset version."""
     if cfg.resume:
-        # If resuming, use the provided dataset name directly
-        resume_dataset = cfg.resume_dataset
-        dataset_name = resume_dataset
-        version_str = resume_dataset.split("_")[-1]  # extract version from the name
-        return dataset_name, version_str
-    else:
-        # description extracted from cfg.repo_id (format: "<user>/<description>")
-        repo_id = cfg.repo_id  # e.g. "scylearning/pick_greencube_into_trashbin"
-        dataset = cfg.dataset_path
-        user = repo_id.split("/", 1)[0]
-        description = repo_id.split("/", 1)[1]
+        return cfg.resume_dataset, cfg.resume_dataset.rsplit("_", 1)[-1]
 
-        # dataset.root points to HF_LEROBOT_HOME / repo_id; parent is datasets storage dir
-        root_path = Path(dataset)
-        base_path = root_path.parent  # location where all dataset folders are stored
-
-        # ensure the parent directory exists
-        base_path.mkdir(parents=True, exist_ok=True)
-
-        # list folders that start with the description
-        existing = [p.name for p in base_path.iterdir() if p.is_dir() and p.name.startswith(description + "_")]
-
-        # find the largest existing vNN for this description
-        max_v = 0
-        pattern = re.compile(rf"^{re.escape(description)}_\d{{8}}_v(\d+)$")
-        for name in existing:
-            m = pattern.match(name)
-            if m:
-                try:
-                    vnum = int(m.group(1))
-                    if vnum > max_v:
-                        max_v = vnum
-                except ValueError:
-                    continue
-
-        next_v = max_v + 1
-        today_str = datetime.today().strftime("%Y%m%d")
-        version_str = f"v{str(next_v).zfill(2)}"
-        dataset_name = f"{user}/{description}_{today_str}_{version_str}"
-
-        return dataset_name, version_str
+    user, description = cfg.repo_id.split("/", 1)
+    base_path = Path(cfg.dataset_path).parent
+    base_path.mkdir(parents=True, exist_ok=True)
+    pattern = re.compile(rf"^{re.escape(description)}_\d{{8}}_v(\d+)$")
+    versions = (
+        int(match.group(1))
+        for path in base_path.iterdir()
+        if path.is_dir() and (match := pattern.match(path.name))
+    )
+    version_str = f"v{max(versions, default=0) + 1:02d}"
+    date = datetime.today().strftime("%Y%m%d")
+    return f"{user}/{description}_{date}_{version_str}", version_str
 
 
 def update_dataset_info(cfg, dataset_name, version_str):
-    """
-    Append a single-line record to a readme file under info_path.
-    Line format:
-      record_id="<N>", name="<dataset_name>", task="<original task>", date="<YYYY-MM-DD HH:MM:SS>", version="<vXX>"
-    Simply append chronologically (no sorting).
-    """
-    task_description = cfg.task_description
+    """Append one entry to dataset_info.txt."""
     info_path = Path(cfg.dataset_path).parent
-    user_info = cfg.user_info
     info_file = info_path / "dataset_info.txt"
 
-    # ====== [COUNT EXISTING VALID LINES] ======
     if info_file.exists():
-        with open(info_file, "r") as f:
-            lines = [line for line in f.readlines() if line.strip()]
+        with info_file.open("r", encoding="utf-8") as file:
+            lines = [line for line in file if line.strip()]
         record_id = len(lines) + 1
     else:
         record_id = 1
 
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    type_ = "resumed" if cfg.resume else "record"
-
     info_line = (
-        f'record_id="{record_id}", name="{dataset_name}", task="{task_description}", '
-        f'date="{now_str}", version="{version_str}", user_info="{user_info}", type="{type_}"\n'
+        f'record_id="{record_id}", name="{dataset_name}", '
+        f'task="{cfg.task_description}", '
+        f'date="{datetime.now():%Y-%m-%d %H:%M:%S}", version="{version_str}", '
+        f'user_info="{cfg.user_info}", '
+        f'type="{"resumed" if cfg.resume else "record"}"\n'
     )
-
-    # ====== [APPEND LINE] ======
-    with open(info_file, "a") as f:
-        f.write(info_line)
+    with info_file.open("a", encoding="utf-8") as file:
+        file.write(info_line)

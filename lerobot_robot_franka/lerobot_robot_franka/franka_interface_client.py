@@ -1,199 +1,104 @@
-'''
-running on the user machine 
-to connect to the franka_interface_server 
-'''
+"""ZeroRPC client for the local Franka bridge."""
+
 import logging
+
 import numpy as np
 import zerorpc
 
-log = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
+
 
 class FrankaInterfaceClient:
-    def __init__(self, ip='192.168.1.109', port=4242):
-        try:
-            self.server = zerorpc.Client(heartbeat=20)
-            self.server.connect(f"tcp://{ip}:{port}")
-            log.info("Connected to server")
-        except:
-            log.error("Failed to connect to server")
+    def __init__(self, host: str = "127.0.0.1", port: int = 4242):
+        self.endpoint = f"tcp://{host}:{int(port)}"
+        self.server = zerorpc.Client(timeout=120, heartbeat=20)
+        self.server.connect(self.endpoint)
+        logger.info("Connected ZeroRPC client to %s", self.endpoint)
 
-    def gripper_initialize(self):
-        try:
-            self.server.gripper_initialize()
-            log.info("Connected to gripper")
-        except:
-            log.error("Failed to connect to gripper")
+    def gripper_initialize(self) -> None:
+        self.server.gripper_initialize()
 
     def gripper_goto(
-        self, 
-        width: float, 
-        speed: float, 
-        force: float, 
-        epsilon_inner: float = -1.0,
-        epsilon_outer: float = -1.0,
-        blocking: bool = True
-    ):
-        # self.server.gripper_goto(
-        #     width=width,
-        #     speed=speed,
-        #     force=force,
-        #     blocking=blocking,
-        # )
-        self.server.gripper_goto(width, speed, force, epsilon_inner, epsilon_outer, blocking)
-
-    def gripper_grasp(
         self,
+        width: float,
         speed: float,
         force: float,
-        grasp_width: float = 0.0,
         epsilon_inner: float = -1.0,
         epsilon_outer: float = -1.0,
         blocking: bool = True,
-    ):
-        # self.server.gripper_grasp(
-        #     speed=speed,
-        #     force=force,
-        #     grasp_width=grasp_width,
-        #     epsilon_inner=epsilon_inner,
-        #     epsilon_outer=epsilon_outer,
-        #     blocking=blocking,
-        # )
-        self.server.gripper_grasp(
-            speed,
-            force,
-            grasp_width,
-            epsilon_inner,
-            epsilon_outer,
-            blocking,
+    ) -> None:
+        self.server.gripper_goto(
+            float(width),
+            float(speed),
+            float(force),
+            float(epsilon_inner),
+            float(epsilon_outer),
+            bool(blocking),
         )
 
-    def gripper_get_state(self)-> dict:
+    def gripper_get_state(self) -> dict:
         return self.server.gripper_get_state()
 
-    
-    def robot_get_joint_positions(self):
-        '''
-        list -> np.ndarray
-        '''
-        joint_positions = np.array(self.server.robot_get_joint_positions())
-        return joint_positions
+    def robot_get_joint_positions(self) -> np.ndarray:
+        return np.asarray(self.server.robot_get_joint_positions(), dtype=float)
 
-    def robot_get_joint_velocities(self):
-        '''
-        list -> np.ndarray
-        '''
-        joint_velocities = np.array(self.server.robot_get_joint_velocities())
-        return joint_velocities
-    
-    def robot_get_ee_pose(self):
-        '''
-        list -> np.ndarray
-        '''
-        pose = np.array(self.server.robot_get_ee_pose())
-        return pose
+    def robot_get_joint_velocities(self) -> np.ndarray:
+        return np.asarray(self.server.robot_get_joint_velocities(), dtype=float)
 
-    def robot_move_to_joint_positions(
-        self,
-        positions: np.ndarray,
-        time_to_go: float = None,
-        delta: bool = False,
-        Kq: np.ndarray = None,
-        Kqd: np.ndarray = None,
-    ):
-        self.server.robot_move_to_joint_positions(
-            positions.tolist(), 
-            time_to_go, 
-            delta, 
-            Kq.tolist() if Kq is not None else None, 
-            Kqd.tolist() if Kqd is not None else None
-        )
+    def robot_get_ee_pose(self) -> np.ndarray:
+        return np.asarray(self.server.robot_get_ee_pose(), dtype=float)
 
-    def robot_go_home(self):
-        self.server.robot_go_home()
+    def robot_get_ee_state(self) -> dict[str, np.ndarray]:
+        state = self.server.robot_get_ee_state()
+        return {
+            "pose": np.asarray(state["pose"], dtype=float),
+            "speed": np.asarray(state["speed"], dtype=float),
+            "wrench": np.asarray(state["wrench"], dtype=float),
+        }
 
     def robot_move_to_ee_pose(
         self,
-        # position: np.ndarray = None,
-        # orientation: np.ndarray = None,
-        pose: np.ndarray = None,
-        time_to_go: float = None,
+        pose: np.ndarray,
+        time_to_go: float | None = None,
         delta: bool = False,
-        Kx: np.ndarray = None,
-        Kxd: np.ndarray = None,
+        Kx: np.ndarray | None = None,
+        Kxd: np.ndarray | None = None,
         op_space_interp: bool = True,
-    ):
-        self.server.robot_move_to_ee_pose(
-            pose.tolist(),
+        blocking: bool = True,
+    ) -> bool:
+        return bool(self.server.robot_move_to_ee_pose(
+            np.asarray(pose, dtype=float).tolist(),
             time_to_go,
-            delta,
-            Kx.tolist() if Kx is not None else None,
-            Kxd.tolist() if Kxd is not None else None,
-            op_space_interp,
-        )
+            bool(delta),
+            np.asarray(Kx, dtype=float).tolist() if Kx is not None else None,
+            np.asarray(Kxd, dtype=float).tolist() if Kxd is not None else None,
+            bool(op_space_interp),
+            bool(blocking),
+        ))
 
-    def robot_start_joint_impedance_control(
-        self, 
-        Kq: np.ndarray = None, 
-        Kqd: np.ndarray = None, 
-        adaptive: bool = True,
-    ):
-        self.server.robot_start_joint_impedance_control(
-            Kq.tolist() if Kq is not None else None,
-            Kqd.tolist() if Kqd is not None else None,
-            adaptive,
-        )
-        print(f"[ROBOT] Joint impedance control started")
-
-    def robot_start_cartesian_impedance_control(self, Kx: np.ndarray, Kxd: np.ndarray):
+    def robot_start_cartesian_impedance_control(
+        self,
+        Kx: np.ndarray | None = None,
+        Kxd: np.ndarray | None = None,
+    ) -> None:
         self.server.robot_start_cartesian_impedance_control(
-            Kx.tolist() if Kx is not None else None,
-            Kxd.tolist() if Kxd is not None else None,
+            np.asarray(Kx, dtype=float).tolist() if Kx is not None else None,
+            np.asarray(Kxd, dtype=float).tolist() if Kxd is not None else None,
         )
-        print(f"[ROBOT] Cartesian impedance control started")
 
+    def robot_update_desired_ee_pose(
+        self,
+        pose: np.ndarray,
+    ) -> int:
+        return int(
+            self.server.robot_update_desired_ee_pose(
+                np.asarray(pose, dtype=float).tolist(),
+            )
+        )
 
-    def robot_update_desired_joint_positions(self, positions: np.ndarray):
-        try:
-            self.server.robot_update_desired_joint_positions(positions.tolist())
-        except Exception as e:
-            log.warning(f"[ROBOT] robot_update_desired_joint_positions failed: {e}")
-
-    def robot_update_desired_ee_pose(self, pose: np.ndarray):
-        try:
-            self.server.robot_update_desired_ee_pose(pose.tolist())
-        except Exception as e:
-            log.warning(f"[ROBOT] robot_update_desired_ee_pose failed: {e}")
-
-    def robot_terminate_current_policy(self):
+    def robot_terminate_current_policy(self) -> None:
         self.server.robot_terminate_current_policy()
 
-    def close(self):
+    def close(self) -> None:
         self.server.close()
-
-if __name__ == "__main__":
-    
-    Franka = FrankaInterfaceClient(ip="192.168.1.109")
-    Franka.gripper_initialize()
-    
-    Franka.gripper_goto(width=0.06, speed=0.1, force=10.0)
-    gripper_state = Franka.gripper_get_state()
-    print(f"Current gripper state: {gripper_state}")
-    
-    # Franka.gripper_goto(width=0.08, speed=0.1, force=10.0)
-    # Reset
-    Franka.robot_go_home()
-
-    # Get joint positions
-    joint_positions = Franka.robot_get_joint_positions()
-    print(f"Current joint positions: {joint_positions}")
-
-    # Command robot to pose (move 4th and 6th joint)
-    joint_positions_desired = np.array(
-        [-0.14, -0.02, -0.05, -1.57, 0.05, 1.50, -0.91]
-    )
-    print(f"\nMoving joints to: {joint_positions_desired} ...\n")
-    state_log = Franka.robot_move_to_joint_positions(joint_positions_desired, time_to_go=2.0)
-
-    # Get updated joint positions
-    joint_positions = Franka.robot_get_joint_positions()
-    print(f"New joint positions: {joint_positions}")

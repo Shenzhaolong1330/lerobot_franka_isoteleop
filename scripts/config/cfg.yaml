@@ -1,0 +1,129 @@
+services:
+  conda_env: "polymetis-local" # Conda environment used by Polymetis services
+  fairo_root: "~/fairo-franka/polymetis/polymetis" # Polymetis source directory
+  franka_ip: "172.16.0.2"  # Robot controller IP.
+  robot_model:
+    type: "fr3v2_1" # Robot model identifier
+    urdf_path: "assets/franka_urdf/fr3v2_1_arm.urdf" # URDF path relative to this repository
+    ee_link_name: "fr3v2_1_tcp" # End-effector link used by Polymetis
+    tcp_xyz_rpy: [0, 0, 0, 0, 0, 0] # TCP from link8: xyz in m and XYZ Euler angles in rad
+    joint_limits_low: [-2.9007400167, -1.8360900167, -2.9007400167, -3.0770200167, -2.87630335, 0.43982265, -3.05083335] # Lower joint limits in rad
+    joint_limits_high: [2.9007400167, 1.8360900167, 2.9007400167, -0.1169370833, 2.87630335, 4.62163335, 3.05083335] # Upper joint limits in rad
+    joint_velocity_limits: [2.62, 2.62, 2.62, 2.62, 5.26, 4.18, 5.26] # Joint velocity limits in rad/s
+    torque_limits: [87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0] # Joint torque limits in Nm
+  arm:
+    bind_host: "127.0.0.1" # Address used by the Polymetis arm server
+    host: "127.0.0.1" # Address used by local arm clients
+    port: 50051 # Polymetis arm gRPC port
+    limit_rate: true # Enable libfranka command-rate limiting
+    lpf_cutoff_frequency: 100 # Libfranka command low-pass cutoff in Hz
+  franka_hand:
+    bind_host: "127.0.0.1" # Address used by the Franka Hand server
+    host: "127.0.0.1" # Address used by local Franka Hand clients
+    port: 50052 # Franka Hand gRPC port
+  zerorpc:
+    bind_host: &zerorpc_host "127.0.0.1" # Address used by the local ZeroRPC bridge
+    host: *zerorpc_host # Address used by recording and replay clients
+    port: &zerorpc_port 4242 # ZeroRPC bridge port
+
+record:
+  repo_id: "scylearning/franka_dataset" # Base dataset identifier: <user>/<dataset>
+  user_notes: # Optional notes saved in dataset_info.txt
+  fps: 15 # Dataset, camera, and control-loop frequency
+
+  robot:
+    server_host: *zerorpc_host  # Local ZeroRPC bridge.
+    server_port: *zerorpc_port # Local ZeroRPC bridge port
+    use_gripper: &use_gripper true # Enable gripper state, action, and hardware access
+    gripper: &gripper # Shared gripper configuration
+      type: "pgi"  # "pgi" or "franka_hand".
+      init: true # Initialize the selected gripper when connecting
+      reverse: false # Reverse logical open and close directions
+      close_threshold: 0.7 # Values below this threshold command close
+      pgi:
+        port: "/dev/franka_pgi_gripper" # PGI serial device path
+        force: 100 # PGI force command
+        speed: 100 # PGI speed command
+        min_position: 0 # Raw PGI position treated as fully closed
+        max_position: 1000 # Raw PGI position treated as fully open
+      franka_hand:
+        max_open: 0.0801  # m
+        force: 20.0  # N
+        speed: 0.2  # m/s
+    reference_frame: &reference_frame "tcp"  # "base" or "tcp"
+    init_pose: [0.221833, -0.294429, 0.385570, -3.139069, 0.016899, -0.785] # Reset pose: xyz in m and XYZ Euler angles in rad
+    init_pose_range: [0.02, 0.02, 0.01, 0.0, 0.0, 0.0] # Random reset range: xyz in m and rotation in deg
+    reset_time_to_go: 5.0  # Minimum-jerk duration in seconds.
+    max_translation_step: 0.05 # Maximum accepted translation action norm in m
+    max_rotation_step: 0.2 # Maximum accepted rotation action norm in rad
+    cartesian_impedance:
+      # Ignore small residuals from transforms and separate state reads.
+      translation_axis_deadband: &translation_axis_deadband 0.0005  # m
+      rotation_axis_deadband: &rotation_axis_deadband 0.0005        # rad
+      select_vector: &select_vector [1, 1, 1, 1, 1, 1] # Enabled axes: [X, Y, Z, RX, RY, RZ]
+      stiffness: &stiffness [2000, 2000, 2000, 250, 250, 250] # Cartesian stiffness for [X, Y, Z, RX, RY, RZ]
+      damping: &damping [89, 89, 89, 9, 9, 9] # Cartesian damping for [X, Y, Z, RX, RY, RZ]
+      error_clip: [0.08, 0.004, 0.005, 0.05, 0.05, 0.05] # Error limits for [S/W, A/D, Q/E, R/T, G/F, B/V]; null disables clipping
+      target_filter_alpha: 0.05 # Target low-pass alpha; larger values filter less
+      nullspace_stiffness: 0.2 # Base joint-posture stiffness
+      joint1_nullspace_stiffness: 100.0 # Joint 1 stiffness multiplier
+
+  teleop:
+    step_size: 0.01 # Normal keyboard translation step in m
+    fine_step_size: 0.004 # Fine keyboard translation step in m
+    rot_step_size: 0.04 # Normal keyboard rotation step in rad
+    fine_rot_step_size: 0.02 # Fine keyboard rotation step in rad
+    control_frame_euler_deg: &control_frame_euler_deg [0, 0, -45] # Control frame XYZ Euler orientation relative to base in degrees
+
+  task:
+    description: "task description." # Task instruction saved with every frame
+    num_episodes: 120 # Number of episodes to record
+    display: true # Display live observations and actions in Rerun
+    resume: false # Append episodes to an existing dataset when true
+    resume_dataset: &dataset_name "scylearning/franka_dataset_v01" # Existing dataset used by resume and tools
+
+  time:
+    episode_time_sec: 600 # Maximum recording time per episode in seconds
+    reset_time_sec: 600 # Maximum manual pre-reset time in seconds
+    save_meta_period: 1 # Save metadata after every N episodes
+  cameras:
+    enabled: true  # Use dummy images when false.
+    wrist_cam_serial: "944622073455" # Wrist RealSense serial number
+    exterior_cam_serial: "151222071369" # Exterior RealSense serial number
+    width: 640 # Camera and dummy-frame width in pixels
+    height: 480 # Camera and dummy-frame height in pixels
+    dummy_value: 0  # Dummy image intensity.
+
+  storage:
+    push_to_hub: false # Upload the dataset to Hugging Face after recording
+
+replay:
+  repo_id: *dataset_name # Dataset to replay
+  episode_idx: 0 # Episode index to replay
+  robot:
+    server_host: *zerorpc_host # ZeroRPC bridge address
+    server_port: *zerorpc_port # ZeroRPC bridge port
+    use_gripper: *use_gripper # Reuse the recording gripper setting
+    gripper: *gripper # Reuse the recording gripper configuration
+    reference_frame: *reference_frame # Reuse the recording action frame
+    control_frame_euler_deg: *control_frame_euler_deg # Reuse the control frame
+    cartesian_impedance:
+      translation_axis_deadband: *translation_axis_deadband # Reuse translation deadband
+      rotation_axis_deadband: *rotation_axis_deadband # Reuse rotation deadband
+      select_vector: *select_vector # Reuse enabled Cartesian axes
+      stiffness: *stiffness # Reuse Cartesian stiffness
+      damping: *damping # Reuse Cartesian damping
+
+visualize:
+  dataset_name: *dataset_name # Dataset to visualize
+  episode_index: 0 # Episode index to visualize
+  default_obs_group: "tcp_pose" # Default observation group in the data window
+  data_window: true # Open the per-frame browser data window
+  print_to_terminal: false # Also print per-frame values to the terminal
+
+check_dataset:
+  dataset_name: *dataset_name # Dataset checked by tools-check-dataset
+
+prune_episodes:
+  old_dataset_name: *dataset_name # Source dataset kept unchanged
+  new_dataset_name: scylearning/franka_dataset_v01_pruned # Output dataset after pruning

@@ -1,73 +1,43 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Usage: sudo ./map_franka_usb.sh franka_left_gripper
-# Argument 1: mapping name
-MAP_NAME=$1
+MAP_NAME="${1:-franka_pgi_gripper}"
+RULE_FILE="/etc/udev/rules.d/99-franka-pgi-gripper.rules"
 
-if [ -z "$MAP_NAME" ]; then
-    echo "Usage: $0 <mapping_name>"
+mapfile -t USB_DEVICES < <(compgen -G "/dev/ttyUSB*" || true)
+if [[ "${#USB_DEVICES[@]}" -ne 1 ]]; then
+    echo "Please connect exactly one /dev/ttyUSB* device; found ${#USB_DEVICES[@]}."
     exit 1
 fi
 
-RULE_FILE="/etc/udev/rules.d/99-franka.rules"
+DEVICE="${USB_DEVICES[0]}"
+echo "Detected PGI serial device: $DEVICE"
 
-# 1. Check current number of /dev/ttyUSB devices
-USB_DEVICES=($(ls /dev/ttyUSB* 2>/dev/null))
-NUM_USB=${#USB_DEVICES[@]}
+ID_VENDOR=""
+ID_PRODUCT=""
+SERIAL=""
+while IFS='=' read -r key value; do
+    case "$key" in
+        ID_VENDOR_ID) ID_VENDOR="$value" ;;
+        ID_MODEL_ID) ID_PRODUCT="$value" ;;
+        ID_SERIAL_SHORT) SERIAL="$value" ;;
+    esac
+done < <(udevadm info -q property -n "$DEVICE")
 
-if [ "$NUM_USB" -eq 0 ]; then
-    echo "No /dev/ttyUSB* devices detected."
-    exit 1
-elif [ "$NUM_USB" -gt 1 ]; then
-    echo "Only one USB device should be connected for mapping. Currently found $NUM_USB devices."
-    exit 1
-fi
-
-DEVICE=${USB_DEVICES[0]}
-
-# 2. Get idVendor, idProduct, serial of the device
-IDVENDOR=$(udevadm info -a -n $DEVICE | grep 'ATTRS{idVendor}' | head -n1 | awk -F'"' '{print $2}')
-IDPRODUCT=$(udevadm info -a -n $DEVICE | grep 'ATTRS{idProduct}' | head -n1 | awk -F'"' '{print $2}')
-SERIAL=$(udevadm info -a -n $DEVICE | grep 'ATTRS{serial}' | head -n1 | awk -F'"' '{print $2}')
-
-if [ -z "$SERIAL" ]; then
-    echo "Failed to get device serial number."
+if [[ -z "$ID_VENDOR" || -z "$ID_PRODUCT" || -z "$SERIAL" ]]; then
+    echo "Could not read USB vendor, product, or serial from $DEVICE."
     exit 1
 fi
 
-# 3. Check if rule file exists
-if [ ! -f "$RULE_FILE" ]; then
-    sudo touch "$RULE_FILE"
-fi
-
-# 4. Check if mapping name already exists
-EXISTING_LINE=$(grep "SYMLINK+=\"$MAP_NAME\"" $RULE_FILE)
-
-if [ -n "$EXISTING_LINE" ]; then
-    EXISTING_SERIAL=$(echo $EXISTING_LINE | grep -o 'ATTRS{serial}=="[^"]*"' | awk -F'"' '{print $2}')
-    if [ "$EXISTING_SERIAL" == "$SERIAL" ]; then
-        echo "Rule already exists with the same serial number. No changes made."
-    else
-        echo "Rule exists but with a different serial number. Replacing with new one."
-        sudo sed -i "/SYMLINK+=\"$MAP_NAME\"/d" $RULE_FILE
-        echo "SUBSYSTEM==\"tty\", ATTRS{idVendor}==\"$IDVENDOR\", ATTRS{idProduct}==\"$IDPRODUCT\", ATTRS{serial}==\"$SERIAL\", SYMLINK+=\"$MAP_NAME\"" | sudo tee -a $RULE_FILE
-    fi
-else
-    echo "Adding new rule..."
-    echo "SUBSYSTEM==\"tty\", ATTRS{idVendor}==\"$IDVENDOR\", ATTRS{idProduct}==\"$IDPRODUCT\", ATTRS{serial}==\"$SERIAL\", SYMLINK+=\"$MAP_NAME\"" | sudo tee -a $RULE_FILE
-fi
-
-# 5. Reload udev rules
-sudo udevadm control --reload
+echo "USB identity: vendor=$ID_VENDOR product=$ID_PRODUCT serial=$SERIAL"
+echo "Writing udev rule (sudo permission is required)..."
+RULE="SUBSYSTEM==\"tty\", ATTRS{idVendor}==\"$ID_VENDOR\", ATTRS{idProduct}==\"$ID_PRODUCT\", ATTRS{serial}==\"$SERIAL\", GROUP=\"dialout\", MODE=\"0660\", SYMLINK+=\"$MAP_NAME\""
+sudo touch "$RULE_FILE"
+sudo sed -i "/SYMLINK+=\"$MAP_NAME\"/d" "$RULE_FILE"
+printf '%s\n' "$RULE" | sudo tee -a "$RULE_FILE" >/dev/null
+echo "Reloading udev rules..."
+sudo udevadm control --reload-rules
 sudo udevadm trigger
-sleep 2
+sudo udevadm settle
 
-# 6. Verify mapping
-if [ -e "/dev/$MAP_NAME" ]; then
-    LINK_TARGET=$(readlink -f "/dev/$MAP_NAME")
-    echo "Mapping successful: /dev/$MAP_NAME -> $LINK_TARGET"
-    SERIAL_CHECK=$(udevadm info -a -n "$LINK_TARGET" | grep 'ATTRS{serial}' | head -n1 | awk -F'"' '{print $2}')
-    echo "   Serial number: $SERIAL_CHECK"
-else
-    echo "Mapping failed: /dev/$MAP_NAME does not exist."
-fi
+echo "Mapped $DEVICE as /dev/$MAP_NAME. Replug the gripper if the link is not visible yet."

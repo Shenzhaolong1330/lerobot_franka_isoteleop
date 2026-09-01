@@ -1,459 +1,406 @@
-# Franka Teleoperation Data Collection with Isomorphic Joint Mapping and End-Effector Pose
+# Franka Research 3 Keyboard Teleoperation Data Collection
 
-## Introduction 
-This project is a teleoperation data collection tool for Franka Research 3 robot (should compatible with Franka Panda), embeded in [LeRobot](https://github.com/huggingface/lerobot.git).
-
-It supports the master-slave isomorphic joint mapping control of the robot, and collect the teleoperation data in LeRobot dataset format.
-
-<p align="center">
-  <img src="assets/robot.png" alt="Record" width="600">
-  <br>
-</p>
-
-### New Support
-
-Now we support the end-effector pose control using [SpaceMouse](https://3dconnexion.com/) devices.
-
-<p align="center">
-  <img src="assets/spacemouse.png" alt="Record" width="600">
-  <br>
-</p>
-
- The SpaceMouse is a 6-axis input device that can be used to control the end pose of the robot. The left button is used to open the gripper, and the right button is used to close the gripper.
-
-### New Support 2
-
-Now we support the end-effector pose control using Oculus Quest 3/3s devices.
-
-<p align="center">
-  <img src="assets/quest3s.jpg" alt="Oculus Quest" width="600">
-  <br>
-</p>
-
-The Oculus Quest controller provides 6-DoF tracking for intuitive end-effector control. The right controller is used for robot manipulation with the following controls:
-
-- **RG (Right Grip)**: Must be pressed to enable robot movement
-- **RTr (Right Trigger)**: Controls gripper (press to close, release to open)
-- **A Button**: Request robot reset
-- **Right controller pose**: Controls end-effector delta pose
-
-## 0. Franka Control Instructions
-
-In this version, we use [Polymetis](https://polymetis-docs.github.io/) to control Franka. Since Polymetis does not support Python 3.10 and is recommended to run on NUC separately, we use Zerorpc for remote communication implementation. The specific process is as follows:
-
-### 0.1 Install [Polymetis](https://polymetis-docs.github.io/) on NUC
-
-We have open-sourced the optimized source code for Franka at [Polymetis](https://github.com/Shenzhaolong1330/fairo-franka/tree/main). For detailed installation instructions, please refer to [FRANKA.md](https://github.com/Shenzhaolong1330/fairo-franka/blob/main/polymetis/FRANKA.md).
-
-### 0.2. Start Server on NUC
-
-Start [launch_robot](https://github.com/Shenzhaolong1330/fairo-franka/blob/main/polymetis/polymetis/python/scripts/launch_robot.py), [launch_gripper](https://github.com/Shenzhaolong1330/fairo-franka/blob/main/polymetis/polymetis/python/scripts/launch_gripper.py), and [franka_interface_server](https://github.com/Shenzhaolong1330/fairo-franka/blob/main/polymetis/polymetis/python/polymetis/franka_interface_server.py) respectively.
-
-```
-# On the NUC
-python launch_robot.py robot_client=franka_hardware
-python launch_gripper.py gripper=franka_hand
-python franka_interface_server.py
-```
-
-<!-- ### 0.3 Start [interface client](lerobot_robot_franka\lerobot_robot_franka\franka_interface_client.py) locally
-
-Before attempting to connect to Franka, start the [interface client](lerobot_robot_franka\lerobot_robot_franka\franka_interface_client.py).
-
-```
-# On the local machine
-python franka_interface_client.py
-```
-
-The functions in the [interface client](lerobot_robot_franka\lerobot_robot_franka\franka_interface_client.py) are basically the same as those in Polymetis. For usage, please refer to [Polymetis](https://polymetis-docs.github.io/).
-         -->
+> [!NOTE]
+> This repository uses Polymetis for end-effector Cartesian impedance control and LeRobot for keyboard teleoperation and dataset collection.
 
 ## 1. Environment Setup
-### 1.1 Create and Activate Conda Environment
+
+### 1.1 Create the Conda Environment
+
 ```bash
-conda create -n franka_data python=3.10
+conda create -n franka_data python=3.10 -y
 conda activate franka_data
 ```
 
-### 1.2 Install lerobot
+### 1.2 Install [libfranka](https://github.com/frankarobotics/libfranka)
+
+Install the official Debian package matching the robot system image. Tested on
+Ubuntu 22.04 with libfranka 0.19.0.
+
 ```bash
-# Install specific version 0.3.4
-# git checkout da5d2f3e9187fa4690e6667fe8b294cae49016d6
-git clone https://github.com/huggingface/lerobot.git
-cd lerobot
-git checkout da5d2f3e9187fa4690e6667fe8b294cae49016d6
-pip install -e .
+cd /tmp
+FRANKA_VERSION="0.19.0"
+FRANKA_UBUNTU_CODENAME="$(lsb_release -cs)"
+FRANKA_DEB="libfranka_${FRANKA_VERSION}_${FRANKA_UBUNTU_CODENAME}_amd64.deb"
+wget "https://github.com/frankarobotics/libfranka/releases/download/${FRANKA_VERSION}/${FRANKA_DEB}"
+wget "https://github.com/frankarobotics/libfranka/releases/download/${FRANKA_VERSION}/${FRANKA_DEB}.sha256"
+sha256sum -c "${FRANKA_DEB}.sha256"
+sudo dpkg -i "${FRANKA_DEB}"
 ```
 
-### 1.3 Clone and Install Franka Teleoperation Control Source
+### 1.3 Install LeRobot
+
 ```bash
-mkdir franka_data_collection && cd franka_data_collection
-git clone https://github.com/Shenzhaolong1330/lerobot_franka_isoteleop.git
-cd lerobot_franka_isoteleop
-pip install -e .
+git clone https://github.com/huggingface/lerobot.git ~/lerobot
+cd ~/lerobot
+git checkout 306429a85b9cc79d8a86278d8b5bc024182c3cde
+python -m pip install -e .
 ```
 
-### 1.4 View Available Commands
-Run the following command to display all available scrtips:
+### 1.4 Install Polymetis
+
+Polymetis uses its own Python 3.8 environment and links to the libfranka DEB.
+
+```bash
+git clone https://github.com/Shenzhaolong1330/fairo-franka.git ~/fairo-franka
+cd ~/fairo-franka
+git checkout f64e925efcc566bd1827603888df2d5b09a76fe1
+
+conda env create -f polymetis/polymetis/environment.yml
+conda activate polymetis-local
+python -m pip install zerorpc
+
+cmake -S polymetis/polymetis -B polymetis/polymetis/build \
+  -DBUILD_FRANKA=ON \
+  -DFranka_DIR=/usr/lib/cmake/Franka \
+  -DBUILD_TESTS=OFF \
+  -DBUILD_DOCS=OFF \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY="$CONDA_PREFIX/lib" \
+  -DCMAKE_LIBRARY_OUTPUT_DIRECTORY="$CONDA_PREFIX/lib" \
+  -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="$CONDA_PREFIX/bin"
+cmake --build polymetis/polymetis/build --parallel 8
+python -m pip install -e polymetis/polymetis
+```
+
+Two Conda environments are required:
+
+- `franka_data`: LeRobot, keyboard control, cameras, and dataset tools.
+- `polymetis-local`: Polymetis and the Franka control services.
+
+Activate `franka_data` for normal use. The launcher commands enter
+`polymetis-local` automatically.
+
+### 1.5 Install This Repository
+
+```bash
+mkdir -p ~/franka_data_collection
+git clone https://github.com/Shenzhaolong1330/lerobot_franka_teleop.git \
+  ~/franka_data_collection/lerobot_franka_teleop
+conda activate franka_data
+cd ~/franka_data_collection/lerobot_franka_teleop
+python -m pip install -e .
+```
+
+### 1.6 View Available Commands
+
 ```bash
 franka-help
-# ==================================================
-#  Franka Teleoperation Utilities - Command Reference
-# ==================================================
-
-# Core Commands:
-#   franka-record           Record teleoperation dataset
-#   franka-replay           Replay a recorded dataset
-#   franka-visualize        Visualize recorded dataset
-#   franka-reset           Reset the robot to initial state
-#   franka-train          Train a policy on the recorded dataset
-
-# Utility Commands:
-#   utils-joint-offsets   Compute joint offsets for teleoperation
-
-# Tool Commands:
-#   tools-check-dataset   Check local dataset information
-#   tools-check-rs        Retrieve connected RealSense camera serial numbers
-
-# Shell Tools:
-#   map_gripper.sh        Map Gripper Serial Port
-#   check_master_port.sh  Get the Master Arm's Persistent Serial Identifier
-
-# Test Commands:
-#   test-gripper-ctrl     Run gripper control command (operate the gripper)
-
-# --------------------------------------------------
-#  Tip: Use 'franka-help' anytime to see this summary.
-# ==================================================
 ```
 
-## 2. Obtain and Configure Necessary Parameters
+The main commands are:
 
-### 2.1 Get RealSense Camera Serial Number
-Please make sure only one camera is connected at a time.
+```text
+franka-start-arm       Start the Polymetis arm service
+franka-start-gripper   Start the Franka Hand service; PGI needs no service
+franka-start-server    Start the local ZeroRPC bridge
+franka-record          Record a keyboard teleoperation dataset
+franka-replay          Replay a recorded dataset
+franka-visualize       Visualize a recorded dataset
+tools-check-rs         List connected RealSense cameras
+tools-check-info       Clean local dataset information
+tools-check-dataset    Check dataset integrity
+tools-prune-dataset    Remove selected episodes into a new dataset
+tools-robot-state      Read Franka state through ZeroRPC
+test-franka-gripper    Test the configured gripper
+map_gripper.sh         Map the PGI serial device
+```
+
+## 2. Obtain and Configure Parameters
+
+- `record.cameras.enabled: false`: use dummy images without opening cameras.
+- `record.robot.use_gripper: false`: disable gripper hardware and actions; the
+  state gripper value remains `0`.
+
+### 2.1 Configure RealSense Cameras (Optional)
+
 ```bash
 tools-check-rs
 ```
-Or you can check the serial number in the realsense-viewer.
-```
-realsense-viewer
-```
 
-<!-- ### 2.2 Map Gripper Serial Port
-For example, map the gripper to `/dev/franka_left_gripper` and make sure only one gripper USB device is connected:
-```bash
-map_gripper.sh franka_left_gripper
-```
-Next, enter the mapped device into the `gripper_port` field in `cfg.yaml`. -->
+Set `record.cameras.wrist_cam_serial` and
+`record.cameras.exterior_cam_serial` in `scripts/config/cfg.yaml`. When
+`record.cameras.enabled` is `false`, fixed dummy images are used and real
+cameras are not opened.
 
-### 2.3 Get the Master Arm's Persistent Serial Identifier
-Before running this, make sure only one USB device for the master arm is connected:
-```bash
-check_master_port.sh
-```
-Next, enter the obtained serial identifier into the `port` field in `record_cfg.yaml` and set device access permissions:
-```bash
-sudo chmod 666 <your_master_port>
-```
+### 2.2 Configure PGI (Optional)
 
-### 2.4 Obtain Master-Slave Joint Angle Offset Circle
-> **⚠️ WARNING: Before recording data, you must complete this step to set the correct joint offset. Otherwise, the slave arm may move unexpectedly.**
-
-
-Manually move the master arm so that its joint angles roughly match the current joint angles of the slave arm. This is done to calculate the joint angle offset cycle between the master and slave arms. Then run:
-```bash
-utils-joint-offsets
-```
-Copy the resulting `joint_offsets` into the corresponding fields in `record_cfg.yaml`.
-
-### 2.5 Oculus Quest Setup (For Oculus Teleoperation Mode)
-
-If you plan to use Oculus Quest for teleoperation, follow these steps to set up the device:
-
-#### 2.5.0 Clone Oculus Reader
-```bash
-cd lerobot_franka_isoteleop/lerobot_teleoperator_franka/lerobot_teleoperator_franka/oculus
-git clone https://github.com/rail-berkeley/oculus_reader.git
-pip install -e oculus_reader
-```
-after pip, you can run 
-```bash
-python lerobot_franka_isoteleop/lerobot_teleoperator_franka/lerobot_teleoperator_franka/oculus/oculus_reader/oculus_reader/reader.py
-```
-to test the Oculus Reader.
-
-#### 2.5.1 Install ADB (Android Debug Bridge)
-
-ADB is required for communication between Oculus Quest and the computer.
+Connect only one PGI USB serial device, then run:
 
 ```bash
-# On Ubuntu
-sudo apt install android-tools-adb
-
-# Verify installation
-adb version
+map_gripper.sh franka_pgi_gripper
 ```
 
-#### 2.5.2 Enable Developer Mode on Oculus Quest
-
-1. Create or join a developer organization at [Meta for Developers](https://developer.oculus.com/manage/organizations/create/)
-2. Open the Meta Quest app on your phone
-3. Go to **Settings** → Select your device → **More Settings** → **Developer Mode**
-4. Enable **Developer Mode** toggle
-
-#### 2.5.3 Connect Oculus Quest to Computer
-
-**Option A: USB Connection (Recommended for initial setup)**
-
-1. Connect Oculus Quest to your computer using a USB-C cable
-2. Put on the headset and allow USB debugging when prompted
-3. Check **Always allow from this computer**
-4. Verify connection:
-```bash
-adb devices
-# Expected output:
-# List of devices attached
-# <device_id>    device
-```
-
-**Option B: Wireless Connection (More portable for operation)**
-
-1. First connect via USB cable
-2. Ensure both Oculus Quest and computer are on the same network
-3. Get the Oculus Quest IP address:
-```bash
-adb shell ip route
-# Look for the IP after "src", e.g., 192.168.110.62
-```
-4. Configure the IP in `record_cfg.yaml`:
-```yaml
-teleop:
-  oculus_config:
-    ip: "192.168.110.62"  # Your Oculus Quest IP address
-```
-
-#### 2.5.4 Install Oculus Reader APK
-
-The Oculus Reader APK comes pre-packaged with this project. To install it:
+The default PGI path in `cfg.yaml` is `/dev/franka_pgi_gripper`. PGI is driven
+directly over serial and does not use `franka-start-gripper`.
+The mapped device uses the `dialout` group. If needed, add the current user and
+sign in again:
 
 ```bash
-# Navigate to the APK directory
-cd lerobot_teleoperator_franka/lerobot_teleoperator_franka/oculus/oculus_reader/APK
-
-# Install the APK to Oculus Quest
-adb install -r teleop-debug.apk
+sudo usermod -aG dialout "$USER"
 ```
 
-After installation, the app will appear in your Oculus Quest library under **Unknown Sources**.
+### 2.3 Configure the Robot and Keyboard
 
-#### 2.5.5 Configure Oculus Teleoperation in record_cfg.yaml
+Edit `scripts/config/cfg.yaml` before recording. Important fields are:
 
-```yaml
-record:
-  control_mode: "oculus"  # Set control mode to oculus
-  
-  teleop:
-    control_mode: "oculus"
-    oculus_config:
-      ip: "192.168.110.62"  # Oculus Quest IP address
-      use_gripper: True
-      pose_scaler: [2.0, 1.5]  # [position_scale, orientation_scale]
-      channel_signs: [1, 1, 1, -1, -1, 1]  # Axis direction signs [x, y, z, rx, ry, rz]
-```
+- `services.franka_ip`: physical robot controller IP. Polymetis and ZeroRPC
+  hosts remain `127.0.0.1` when all services run on the same computer.
+- `services.robot_model.tcp_xyz_rpy`: TCP pose relative to Franka link8 as
+  `[x, y, z, roll, pitch, yaw]` in metres and radians.
+- `record.robot.use_gripper`: enable or disable gripper observations and actions.
+- `record.robot.gripper.type`: `pgi` or `franka_hand`.
+- `record.robot.reference_frame`: `base` or `tcp`. Keyboard deltas use this
+  frame. With `tcp`, `tcp_pose` is stored relative to the episode reference
+  pose; with `base`, it is stored as an absolute base-frame pose.
+- `record.robot.init_pose`: reset pose `[x, y, z, roll, pitch, yaw]` in metres
+  and radians. Rotation uses XYZ Euler angles.
+- `record.robot.init_pose_range`: random reset range
+  `[x, y, z, roll_deg, pitch_deg, yaw_deg]`.
+- `record.robot.reset_time_to_go`: automatic minimum-jerk reset duration.
+- `record.robot.cartesian_impedance.select_vector`: enabled keyboard axes in
+  `[X, Y, Z, RX, RY, RZ]` order.
+- `stiffness` and `damping`: Cartesian impedance gains for the six axes.
+- `error_clip`: positive per-axis Cartesian controller error limits; `null`
+  disables clipping for an axis.
+- `target_filter_alpha`: target low-pass coefficient. Values closer to `1`
+  apply less filtering.
+- `translation_axis_deadband` and `rotation_axis_deadband`: reject small
+  transform and state-read residuals.
+- `nullspace_stiffness` and `joint1_nullspace_stiffness`: joint posture gains.
+- `record.teleop.step_size` and `rot_step_size`: normal translation and
+  rotation steps.
+- `record.teleop.fine_step_size` and `fine_rot_step_size`: steps selected by
+  `/`.
+- `record.teleop.control_frame_euler_deg`: control-frame XYZ
+  Euler orientation relative to the robot base, in degrees.
 
-#### 2.5.6 Oculus Controller Controls
-
-| Control | Function |
-|---------|----------|
-| **RG (Right Grip)** | Press and hold to enable robot movement |
-| **RTr (Right Trigger)** | Press to close gripper, release to open |
-| **A Button** | Request robot reset |
-| **Right Controller Pose** | Controls end-effector delta pose |
-
-#### 2.5.7 Coordinate System Mapping
-
-The Oculus coordinate system is mapped to the robot coordinate system as follows:
-
-| Oculus Axis | Robot Axis | Description |
-|-------------|------------|-------------|
-| X (right) | -Y (left) | Lateral movement |
-| Y (up) | Z (up) | Vertical movement |
-| Z (backward) | X (forward) | Forward/backward movement |
-
-#### 2.5.8 Test Oculus Connection
-
-Before recording, test the Oculus connection:
-
-```python
-from lerobot_teleoperator-franka.lerobot_teleoperator_franka.oculus.oculus_robot import OculusRobot
-
-oculus = OculusRobot(ip='192.168.110.62')
-while True:
-    action = oculus.get_action()
-    print(f"Delta pose: {action[:6]}, Gripper: {action[6]}")
-```
-
-#### 2.5.9 Troubleshooting
-
-**Connection Issues:**
-```bash
-# Restart ADB server
-adb kill-server
-adb start-server
-
-# Check connected devices
-adb devices
-```
-
-**Stop the Oculus App:**
-```bash
-adb shell am force-stop com.rail.oculus.teleop
-```
-
-**Reinstall APK:**
-```bash
-adb uninstall com.rail.oculus.teleop
-adb install -r teleop-debug.apk
-```
+The recorded state has 19 values: TCP pose, TCP speed, TCP force/torque, and
+gripper position.
 
 ## 3. Dataset Recording
 
-### 3.1 Upload Data to Hugging Face (Optional)
-1. Set the following in `record_cfg.yaml`:
-```yaml
-push_to_hub: True
-```
-2. Obtain your Hugging Face account token and login:
+### 3.1 Upload to Hugging Face (Optional)
+
+Set `record.storage.push_to_hub: true` in `cfg.yaml`, then log in:
+
 ```bash
-huggingface-cli login --token ${HUGGINGFACE_TOKEN} 
-huggingface-cli whoami  # Verify successful login
+huggingface-cli login --token ${HUGGINGFACE_TOKEN}
+huggingface-cli whoami
 ```
 
 ### 3.2 Start Recording
-1. Activate **FCI** on the Franka desk interface.  
-2. Verify that the parameters in `record_cfg.yaml` are correct.  
-3. To ensure standardized data collection, please read `9. Dataset Naming and Recording Details` before running the following command:
+
+Before `franka-start-arm`, click **Activate FCI** in Franka Desk. Polymetis
+cannot connect without FCI.
+
+Activate `franka_data` in each terminal below, then run one service per terminal.
+
+Terminal 1:
+
 ```bash
-franka-record
+franka-start-arm      # Start arm control
 ```
+
+For Franka Hand only, terminal 2:
+
+```bash
+franka-start-gripper  # Start Franka Hand service
+```
+
+Terminal 3:
+
+```bash
+franka-start-server   # Start ZeroRPC server
+```
+
+Terminal 4:
+
+```bash
+franka-record         # Start recording
+```
+
+`franka-record` resets the robot to `record.robot.init_pose` before the first
+episode. Stop the arm and ZeroRPC services before switching to Teach mode.
 
 <p align="center">
   <img src="assets/record.png" alt="Record" width="600">
   <br>
-  <b>Figure 1: Record</b>
+  <b>Figure 1: Recording</b>
 </p>
 
 ## 4. Dataset Replay
+
+Keep the arm, optional Franka Hand, and ZeroRPC services running. Move the robot
+to the recorded initial pose, select the dataset and episode under `replay`, and
+run:
+
 ```bash
-franka-replay # Make sure record_cfg.yaml is properly configured
+franka-replay
 ```
 
 ## 5. Dataset Visualization
+
+Set `visualize.dataset_name` and `visualize.episode_index` in `cfg.yaml`, then
+run:
+
 ```bash
-franka-visualize # Make sure record_cfg.yaml is properly configured
+franka-visualize
 ```
+
+<p align="center">
+  <img src="assets/episode_data.png" alt="Episode Data" width="600">
+  <br>
+  <b>Figure 2: Episode Data Window</b>
+</p>
+
 <p align="center">
   <img src="assets/visualize.png" alt="Visualization" width="600">
   <br>
-  <b>Figure 2: Visualization</b>
+  <b>Figure 3: Visualization</b>
 </p>
 
+The episode data window shows the complete action for every frame and lets you
+select one observation group, such as `tcp_pose`, `tcp_speed`, `tcp_force`, or
+`gripper_raw_position`. The Rerun viewer shows camera images and time-series data.
+
 ## 6. Dataset Appending and Resume
-If you have already recorded a dataset under the specified `repo_id`, set `resume: True` in `record_cfg.yaml` and enter the dataset name in `resume_dataset` to continue recording new data on the existing dataset. Then, run the following command:
+
+To append episodes to an existing dataset, set:
+
+```yaml
+record:
+  task:
+    resume: true
+    resume_dataset: "<existing_repo_id>"
+```
+
+Then run:
 
 ```bash
 franka-record
 ```
 
+The existing dataset must use the same FPS and feature schema.
+
 ## 7. Merge Datasets
-If you recorded data in multiple stages, ensure each dataset has a unique `repo_id`. Use the following command to merge them into a single dataset:
+
+Datasets recorded in separate stages can be merged with LeRobot:
+
 ```bash
-lerobot-edit-dataset 
-    --repo_id <merged_repo_id> 
-    --operation.type merge 
-    --operation.repo_ids "['<repo_id_1>', '<repo_id2>']"
+lerobot-edit-dataset \
+  --repo_id <merged_repo_id> \
+  --operation.type merge \
+  --operation.repo_ids "['<repo_id_1>', '<repo_id_2>']"
 ```
-- For more dataset processing commands, see [LeRobot](https://huggingface.co/docs/lerobot/using_dataset_tools).
 
-## 8. Recording Control Keys
+## 8. Dataset Check and Pruning
 
-- **Right Arrow Key**  
-   1. Press the right arrow key: end the current episode and save the data. The program will pause.  
-   2. Enter the **reset** phase: press enter key to continue (the slave arm will follow the master arm), use the master arm to return the slave arm to its initial position.  
-   3. Press the right arrow key again to start recording the next episode.
+Set `check_dataset.dataset_name` in `cfg.yaml`, then check every episode and
+video frame:
 
-- **Left Arrow Key**  
-   - Press to restart the current episode recording (overwrite the current data).
-
-- **Esc Key**  
-   - Press to exit the recording session and save all recorded episodes.
-
-- **Ctrl+C or Exception**
-   - Pressing or on exception: enters exception handling and asks whether to delete the incomplete dataset.
-   - If you delete the dataset by accident, you can find it in the trash folder.
-  
-## 9. Dataset Naming and Recording Details
-### 9.1 Dataset Naming
-<p align="center">
-  <img src="assets/dataset.png" alt="dataset" width="600">
-  <br>
-  <b>Figure 3: Dataset</b>
-</p>
-
-<p align="center">
-  <img src="assets/dataset_info.png" alt="dataset_info" width="600">
-  <br>
-  <b>Figure 4: Dataset Info</b>
-</p>
-
-1. The dataset is by default stored in the `~/.cache/huggingface/lerobot` directory and contains three types of items:
-
-   - `dataset_info.txt`: Automatically records local dataset information, including the following fields: `record_id`, `name`, `task`, `date`, `version`, `user_info`, and `type`. The `user_info` field can be annotated via the `user_notes` entry in `record_cfg.yaml`.
-
-   - `dataset_info_backup`: When `tools-check-dataset` is used to manually update `dataset_info.txt`, this folder stores backups of the previous records.
-
-   - Dataset folders: Stores the actual dataset contents.
-
-2. Dataset names follow the format `[description]_[date]_[version]`, where:
-   - `description` comes from `record_cfg.yaml` as `repo_id=<user_name>/<description>`;
-   - `date` is generated automatically;
-   - `version` is incremented automatically if a dataset with the same `repo_id` already exists.
-3. Description naming rule: `task.description -> Verb_SourceObject_prep_TargetObject`.  
-   For example:  
-   `Pick up the green cube and put it into the trash bin -> pick_greencube_into_trashbin`.
-
-### 9.2 Recording Instructions
-1. Complete step `2. Get and configure required parameters`.
-2. Fill in the task instruction in `record_cfg.yaml` under `task.description` and set `repo_id` according to the dataset naming rules.
-3. Check and adjust other parameters in `record_cfg.yaml` to ensure correctness.
-4. Run `franka-record`. For safety, ensure the master and slave arm joint angles are approximately aligned; `franka-record` will automatically perform the `2.4 Master-Slave Joint Angle Error Check`. Then follow `8. Recording Control Keys` to complete the recording.
-5. After recording, a `dataset_info.txt` file will be automatically created in the same directory to store local dataset information. If you have manually deleted any datasets, update the `dataset_info.txt` using:
 ```bash
 tools-check-dataset
 ```
 
-## 10. Training and Evaluation Using Collected Datasets
-### 10.1 Training
-Config the `train_cfg.yaml` file, including the following fields:
-1. dataset_repo_id: The repository ID of the dataset to use for training.
-2. policy.type: The policy type to use for training. You can choose from `diffusion` and `act`.
-3. output_dir: The directory to save the training outputs.
-4. job_name: The name of the training job.
-5. batch_size: The batch size for training.
-6. steps: The total number of training steps.
+To remove damaged or unwanted episodes while keeping the source dataset, set
+`prune_episodes.old_dataset_name` and `prune_episodes.new_dataset_name`, then
+run:
 
-Then run the following command to start training:
 ```bash
-franka-train
+tools-prune-dataset "[2,5]"
 ```
 
-### 10.2 Evaluation
-To evaluate the trained policy, config the `record_cfg.yaml` file, including the following fields:
-1. run_mode: Set to `run_policy` to enable evaluation mode.
-2. policy.type: The policy type to use for evaluation. You can choose from `diffusion` and `act`. Make sure it is the same as the policy type used for training.
-3. policy.checkpoint_path: The path to the trained policy checkpoint. The path should include `config.json`.
+If dataset folders were deleted manually, clean and re-index
+`dataset_info.txt` with:
 
-Then run the following command to start evaluation:
 ```bash
-franka-record
+tools-check-info
 ```
+
+## 9. Recording Controls
+
+### 9.1 Episode Control Keys
+
+1. **Right Arrow**
+   1. End and save the current episode.
+   2. When another episode remains, press Enter to enter manual pre-reset
+      control.
+   3. Move the robot to a safe pose and press Right Arrow again.
+   4. The robot automatically resets to `init_pose`.
+   5. Press Enter to start the next episode.
+2. **Left Arrow**: discard the current episode buffer and record it again.
+3. **Esc**: save the current episode and exit the recording session.
+4. **Ctrl+C or exception**: stop recording and ask whether the incomplete
+   dataset folder should be moved to trash.
+
+### 9.2 Keyboard Teleoperation Keys
+
+| Key | Action |
+|:---:|:-------|
+| `w` / `s` | Move X negative / positive |
+| `a` / `d` | Move Y negative / positive |
+| `q` / `e` | Move Z positive / negative |
+| `r` / `t` | Rotate RX positive / negative |
+| `g` / `f` | Rotate RY positive / negative |
+| `b` / `v` | Rotate RZ positive / negative |
+| `o` | Latch gripper open |
+| `l` | Latch gripper closed |
+| `/` | Toggle normal and fine steps |
+
+## 10. Dataset Naming and Contents
+
+### 10.1 Dataset Naming
+
+Datasets are stored under `~/.cache/huggingface/lerobot`. The directory also
+contains:
+
+- `dataset_info.txt`: dataset name, task, date, version, user notes, and run
+  duration information.
+- `dataset_info_backup`: backups created by `tools-check-info`.
+- Dataset folders containing episode data and videos.
+
+Generated dataset names use `<dataset>_<YYYYMMDD>_vXX`. The dataset identifier comes from
+`record.repo_id=<user>/<dataset>`, and the version increments automatically.
+It is independent of the task instruction.
+For example:
+
+```yaml
+record:
+  repo_id: "scylearning/franka_dataset"
+  task:
+    description: "Load the centrifuge tube rack."
+```
+
+<p align="center">
+  <img src="assets/dataset.png" alt="Dataset" width="600">
+  <br>
+  <b>Figure 4: Dataset</b>
+</p>
+
+<p align="center">
+  <img src="assets/dataset_info.png" alt="Dataset Info" width="600">
+  <br>
+  <b>Figure 5: Dataset information</b>
+</p>
+
+### 10.2 Recorded Features
+
+- `observation.state`: 19 values: six TCP pose values, six TCP speed values,
+  six TCP force/torque values, and one normalized gripper position.
+- `action`: six Cartesian deltas and, when enabled, one gripper command.
+- `wrist_image` and `exterior_image`: RealSense video frames or dummy frames.
+- `task`: task instruction for each frame.
+
+TCP rotations and rotation actions use XYZ Euler angles in radians. At the start
+of every episode, the current end-effector pose is saved as the episode
+reference used by `reference_frame: tcp` observations.
+
+### 10.3 Recording Checklist
+
+1. Configure the robot, gripper, cameras, task description, and `repo_id`.
+2. Check the initial pose and keep the robot workspace clear.
+3. Start the arm, optional Franka Hand, and ZeroRPC services.
+4. Run `franka-record`; the robot resets before the first episode.
+5. Use `tools-check-dataset` after collection and `tools-check-info` after
+   manually deleting dataset folders.

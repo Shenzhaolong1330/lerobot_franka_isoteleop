@@ -1,44 +1,54 @@
-from setuptools import setup, find_packages
-from pathlib import Path
+from setuptools import find_packages, setup
 
-# ====== Project root ======
-ROOT = Path(__file__).parent.resolve()
 
 setup(
     name="lerobot_franka_teleop",
-    version="0.1.0",
-    description="Franka teleoperation and dataset collection utilities",
+    version="0.2.0",
+    description="Franka keyboard teleoperation and dataset collection utilities",
     python_requires=">=3.10",
-    packages=find_packages(where=".", include=["scripts*", "scripts.*"]),
+    packages=[
+        *find_packages(where="lerobot_robot_franka"),
+        *find_packages(where="lerobot_teleoperator_franka"),
+        *find_packages(
+            where=".",
+            include=["scripts", "scripts.*"],
+            exclude=["scripts.test", "scripts.test.*"],
+        ),
+    ],
+    package_dir={
+        "lerobot_robot_franka": "lerobot_robot_franka/lerobot_robot_franka",
+        "lerobot_teleoperator_franka": (
+            "lerobot_teleoperator_franka/lerobot_teleoperator_franka"
+        ),
+    },
     include_package_data=True,
     install_requires=[
+        "numpy",
+        "pynput",
+        "pydhgripper",
+        "pyrealsense2",
+        "PyYAML",
+        "scipy",
         "send2trash",
-        f"lerobot_robot_franka @ file:///{ROOT}/lerobot_robot_franka",
-        f"lerobot_teleoperator_franka @ file:///{ROOT}/lerobot_teleoperator_franka"
-    ],
-    scripts=[
-        "scripts/tools/map_gripper.sh",
-        "scripts/tools/check_master_port.sh",
+        "tqdm",
+        "zerorpc",
     ],
     entry_points={
         "console_scripts": [
-            # core commands
+            "franka-start-arm = scripts.server.runtime:start_arm",
+            "franka-start-gripper = scripts.server.runtime:start_gripper",
+            "franka-start-server = scripts.server.runtime:start_server",
             "franka-record = scripts.core.run_record:main",
             "franka-replay = scripts.core.run_replay:main",
             "franka-visualize = scripts.core.run_visualize:main",
-            "franka-reset = scripts.core.reset_robot:main",
-            "franka-train = scripts.core.run_train:main",
-            # utils commands (data utilities)
-            "utils-joint-offsets = scripts.utils.teleop_joint_offsets:main",
-
-            # tools commands (helper tools)
-            "tools-check-dataset = scripts.tools.check_dataset_info:main",
-            "tools-check-rs = scripts.tools.rs_devices:main",
-
-            # test commands (testing scripts)
-            "test-gripper-ctrl = scripts.test.gripper_ctrl:main",
-            # unified help command
+            "tools-check-rs = scripts.tools.rs_devices:list_realsense_devices",
+            "tools-check-info = scripts.tools.check_dataset_info:main",
+            "tools-check-dataset = scripts.tools.check_dataset:main",
+            "tools-prune-dataset = scripts.tools.prune_episodes:main",
+            "tools-robot-state = scripts.tools.read_robot_state:main",
+            "test-franka-gripper = scripts.tools.gripper_ctrl:main",
             "franka-help = scripts.help.help_info:main",
-        ]
+        ],
     },
+    scripts=["scripts/tools/map_gripper.sh"],
 )

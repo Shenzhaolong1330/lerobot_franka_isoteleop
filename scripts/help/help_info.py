@@ -1,31 +1,37 @@
-def main():
-    print("""
+def main() -> None:
+    print(
+        """
 ==================================================
- Franka Teleoperation Utilities - Command Reference
+ Franka Keyboard Teleoperation Utilities
 ==================================================
 
 Core Commands:
-  franka-record           Record teleoperation dataset
-  franka-replay           Replay a recorded dataset
-  franka-visualize        Visualize recorded dataset
-  franka-reset           Reset the robot to initial state
-  franka-train          Train a policy on the recorded dataset
-
-Utility Commands:
-  utils-joint-offsets   Compute joint offsets for teleoperation
+  franka-start-arm       Start the Polymetis arm service (terminal 1)
+  franka-start-gripper   Start Franka Hand service; PGI needs no service (terminal 2)
+  franka-start-server    Start this repo's local ZeroRPC bridge (terminal 3)
+  franka-record          Record a keyboard teleoperation dataset
+  franka-replay          Replay a recorded dataset
+  franka-visualize       Visualize a recorded dataset
 
 Tool Commands:
-  tools-check-dataset   Check local dataset information
-  tools-check-rs        Retrieve connected RealSense camera serial numbers
+  tools-check-dataset    Check local dataset integrity
+  tools-check-info       Clean local dataset information
+  tools-check-rs         List connected RealSense cameras
+  tools-prune-dataset    Remove episodes into a new dataset
+  tools-robot-state      Read Franka state through ZeroRPC
+  test-franka-gripper    Test the selected PGI or Franka Hand gripper
+  map_gripper.sh         Map the PGI serial device (default: /dev/franka_pgi_gripper)
 
-Shell Tools:
-  map_gripper.sh        Map Gripper Serial Port
-  check_master_port.sh  Get the Master Arm's Persistent Serial Identifier
+Keyboard:
+  W/S  -/+ X    A/D  -/+ Y    E/Q  -/+ Z
+  T/R  -/+ RX   F/G  -/+ RY   V/B  -/+ RZ
+  O open        L close        / toggle fine steps
 
-Test Commands:
-  test-gripper-ctrl     Run gripper control command (operate the gripper)
-
---------------------------------------------------
- Tip: Use 'franka-help' anytime to see this summary.
+Episode: Right finishes, Left re-records, Esc saves and exits, Enter advances reset.
 ==================================================
-""")
+"""
+    )
+
+
+if __name__ == "__main__":
+    main()
